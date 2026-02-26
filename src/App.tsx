@@ -2,7 +2,7 @@
  * 深度共讀平台 - 路由設定
  */
 
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { HashRouter, Routes, Route } from 'react-router-dom'
 import { Home } from './pages/Home'
 import { TeacherHome } from './pages/teacher/TeacherHome'
 import { CreateSession } from './pages/teacher/CreateSession'
@@ -12,7 +12,7 @@ import { Session } from './pages/student/Session'
 
 export function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         {/* 首頁 */}
         <Route path="/" element={<Home />} />
@@ -26,6 +26,6 @@ export function App() {
         <Route path="/join" element={<Join />} />
         <Route path="/session/:id" element={<Session />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   )
 }
