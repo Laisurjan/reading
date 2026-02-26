@@ -19,11 +19,11 @@ export function TextReader({
   collapsible = false,
   defaultCollapsed = false,
 }: TextReaderProps) {
-  const [fontSize, setFontSize] = useState(18)
+  const [fontSize, setFontSize] = useState(22)
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed)
 
-  const increaseFontSize = () => setFontSize((s) => Math.min(s + 2, 28))
-  const decreaseFontSize = () => setFontSize((s) => Math.max(s - 2, 14))
+  const increaseFontSize = () => setFontSize((s) => Math.min(s + 2, 32))
+  const decreaseFontSize = () => setFontSize((s) => Math.max(s - 2, 18))
 
   if (collapsible && isCollapsed) {
     return (
@@ -66,18 +66,18 @@ export function TextReader({
       </div>
 
       {/* 字體大小控制 */}
-      <div className="px-4 py-2 flex items-center justify-end gap-2 border-b border-gray-100">
-        <span className="text-xs text-gray-400">字體大小</span>
+      <div className="px-4 py-3 flex items-center justify-end gap-3 border-b border-gray-100">
+        <span className="text-sm text-gray-500">字體大小</span>
         <button
           onClick={decreaseFontSize}
-          className="w-7 h-7 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm transition-colors"
+          className="w-10 h-10 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 text-base font-medium transition-colors"
           aria-label="縮小字體"
         >
           A-
         </button>
         <button
           onClick={increaseFontSize}
-          className="w-7 h-7 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm transition-colors"
+          className="w-10 h-10 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 text-base font-medium transition-colors"
           aria-label="放大字體"
         >
           A+

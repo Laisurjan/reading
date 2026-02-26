@@ -18,19 +18,35 @@
   --font-serif: "Noto Serif TC", Georgia, serif;
 }
 
-/* 全域樣式 */
+/* 全域樣式 - 響應式字型大小 */
+html {
+  /* 手機：18px 基準 */
+  font-size: 18px;
+  scroll-behavior: smooth;
+}
+
+/* 平板：19px */
+@media (min-width: 768px) {
+  html {
+    font-size: 19px;
+  }
+}
+
+/* 桌面：20px */
+@media (min-width: 1024px) {
+  html {
+    font-size: 20px;
+  }
+}
+
 body {
   @apply bg-secondary text-gray-800 antialiased;
+  line-height: 1.7;
 }
 
 /* 手機輸入時避免縮放 */
 input, textarea, select {
-  font-size: 16px;
-}
-
-/* 平滑滾動 */
-html {
-  scroll-behavior: smooth;
+  font-size: 1rem;
 }
 
 /* 選取文字顏色 */
