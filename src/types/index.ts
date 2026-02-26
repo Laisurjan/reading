@@ -58,6 +58,8 @@ export interface Student {
   id: string
   sessionId: string
   name: string
+  /** Google 帳號 email（未來認證用） */
+  email?: string
   group?: number
   chosenTextId?: string
   currentStep: Step
