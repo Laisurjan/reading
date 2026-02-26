@@ -89,7 +89,7 @@ export function Join() {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="例如：05 王小明"
+              placeholder="例如：05王小明"
               className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
               maxLength={20}
             />
