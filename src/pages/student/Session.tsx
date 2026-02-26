@@ -5,6 +5,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, BorderStyle } from 'docx'
+import { saveAs } from 'file-saver'
 import { Layout } from '../../components/Layout'
 import { ProgressBar } from '../../components/ProgressBar'
 import { TextReader } from '../../components/TextReader'
@@ -633,46 +635,111 @@ function StepComplete({
   const a1Response = getResponse('A1')
   const a2Response = getResponse('A2')
 
-  // 匯出學習紀錄
-  const handleExport = () => {
-    const lines = [
-      `深度共讀學習紀錄`,
-      `==================`,
-      ``,
-      `文本：《${text.title}》`,
-      `作者：${text.author}`,
-      `出處：${text.source}`,
-      ``,
-    ]
+  // 匯出學習紀錄為 DOCX
+  const handleExport = async () => {
+    const children: Paragraph[] = []
 
+    // 標題
+    children.push(
+      new Paragraph({
+        children: [new TextRun({ text: '深度共讀學習紀錄', bold: true, size: 36 })],
+        heading: HeadingLevel.TITLE,
+        spacing: { after: 400 },
+      })
+    )
+
+    // 文本資訊
+    children.push(
+      new Paragraph({
+        children: [new TextRun({ text: '文本資訊', bold: true, size: 28 })],
+        heading: HeadingLevel.HEADING_1,
+        border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: '2D5A4A' } },
+        spacing: { before: 200, after: 200 },
+      }),
+      new Paragraph({ children: [new TextRun({ text: `標題：《${text.title}》`, size: 24 })] }),
+      new Paragraph({ children: [new TextRun({ text: `作者：${text.author}`, size: 24 })] }),
+      new Paragraph({ children: [new TextRun({ text: `出處：${text.source}`, size: 24 })], spacing: { after: 300 } })
+    )
+
+    // 原文內容（非紙本模式）
     if (!session.isPaperMode && text.content !== '（紙本閱讀）') {
-      lines.push(`【原文內容】`, text.content, ``)
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text: '【原文內容】', bold: true, size: 28, color: '4A6FA5' })],
+          spacing: { before: 300, after: 200 },
+        }),
+        new Paragraph({
+          children: [new TextRun({ text: text.content, size: 24 })],
+          spacing: { after: 300 },
+        })
+      )
     }
 
+    // I 重述
     if (iResponse) {
-      lines.push(`【I 重述】`, iResponse.content, ``)
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text: '【I 重述】', bold: true, size: 28, color: 'E07A5F' })],
+          spacing: { before: 300, after: 200 },
+        }),
+        new Paragraph({
+          children: [new TextRun({ text: iResponse.content, size: 24 })],
+          spacing: { after: 300 },
+        })
+      )
     }
 
+    // A1 經驗連結
     if (a1Response) {
-      lines.push(`【A1 經驗連結】`, a1Response.content, ``)
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text: '【A1 經驗連結】', bold: true, size: 28, color: '81B29A' })],
+          spacing: { before: 300, after: 200 },
+        }),
+        new Paragraph({
+          children: [new TextRun({ text: a1Response.content, size: 24 })],
+          spacing: { after: 300 },
+        })
+      )
     }
 
+    // A2 行動規劃
     if (a2Response) {
-      lines.push(`【A2 行動規劃】`, a2Response.content, ``)
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text: '【A2 行動規劃】', bold: true, size: 28, color: 'C97064' })],
+          spacing: { before: 300, after: 200 },
+        }),
+        new Paragraph({
+          children: [new TextRun({ text: a2Response.content, size: 24 })],
+          spacing: { after: 300 },
+        })
+      )
     }
 
-    lines.push(``, `---`, `匯出時間：${new Date().toLocaleString('zh-TW')}`)
+    // 匯出時間
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `匯出時間：${new Date().toLocaleString('zh-TW')}`,
+            size: 20,
+            color: '888888',
+            italics: true,
+          }),
+        ],
+        spacing: { before: 400 },
+      })
+    )
 
-    const content = lines.join('\n')
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `閱讀紀錄_${text.title}_${new Date().toISOString().slice(0, 10)}.txt`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    // 建立文件
+    const doc = new Document({
+      sections: [{ children }],
+    })
+
+    // 下載
+    const blob = await Packer.toBlob(doc)
+    saveAs(blob, `閱讀紀錄_${text.title}_${new Date().toISOString().slice(0, 10)}.docx`)
   }
 
   // 判斷完成了哪些步驟
@@ -711,7 +778,7 @@ function StepComplete({
           onClick={handleExport}
           className="w-full bg-accent hover:bg-accent/90 text-white rounded-lg py-3 px-6 font-medium transition-colors"
         >
-          📥 匯出學習紀錄
+          📥 匯出學習紀錄 (Word)
         </button>
         <button
           onClick={onExit}
