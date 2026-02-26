@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+/* 自訂色彩與字型 */
+@theme {
+  /* 主要色彩 */
+  --color-primary: #2D5A4A;
+  --color-secondary: #F5F1EB;
+  --color-accent: #C9A959;
+
+  /* 步驟色彩 */
+  --color-step-r: #4A6FA5;
+  --color-step-i: #E07A5F;
+  --color-step-a1: #81B29A;
+  --color-step-a2: #C97064;
+
+  /* 字型 */
+  --font-sans: "Noto Sans TC", system-ui, sans-serif;
+  --font-serif: "Noto Serif TC", Georgia, serif;
+}
+
+/* 全域樣式 */
+body {
+  @apply bg-secondary text-gray-800 antialiased;
+}
+
+/* 手機輸入時避免縮放 */
+input, textarea, select {
+  font-size: 16px;
+}
+
+/* 平滑滾動 */
+html {
+  scroll-behavior: smooth;
+}
+
+/* 選取文字顏色 */
+::selection {
+  @apply bg-accent/30;
+}
