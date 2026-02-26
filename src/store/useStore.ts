@@ -127,6 +127,18 @@ export const useStore = create<Store>()(
         const session = get().getSessionByCode(code)
         if (!session) return null
 
+        // 檢查是否已有同名學生（允許恢復進度）
+        const existingStudent = get().students.find(
+          (s) => s.sessionId === session.id && s.name === name
+        )
+
+        if (existingStudent) {
+          // 恢復既有學生的進度
+          set({ currentStudent: existingStudent })
+          return existingStudent
+        }
+
+        // 建立新學生
         const student: Student = {
           id: generateId(),
           sessionId: session.id,
