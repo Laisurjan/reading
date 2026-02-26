@@ -1,7 +1,7 @@
 {
   "name": "ria-reading-platform",
   "version": "1.0.0",
-  "description": "RIA 拆書共讀平台",
+  "description": "深度共讀 - RIA 閱讀思考平台",
   "type": "module",
   "scripts": {
     "dev": "vite",

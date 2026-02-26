@@ -1,5 +1,5 @@
 /**
- * RIA 拆書共讀平台 - 路由設定
+ * 深度共讀平台 - 路由設定
  */
 
 import { BrowserRouter, Routes, Route } from 'react-router-dom'

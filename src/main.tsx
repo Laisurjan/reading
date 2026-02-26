@@ -1,5 +1,5 @@
 /**
- * RIA 拆書共讀平台 - 進入點
+ * 深度共讀平台 - 進入點
  */
 
 import { StrictMode } from 'react'
