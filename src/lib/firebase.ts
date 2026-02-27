@@ -4,6 +4,7 @@
 
 import { initializeApp } from 'firebase/app'
 import { getFirestore } from 'firebase/firestore'
+import { getAuth, GoogleAuthProvider } from 'firebase/auth'
 
 const firebaseConfig = {
   apiKey: "AIzaSyARtu424A4t1QICRbE5bQ98FiHwTu-fD-s",
@@ -19,3 +20,33 @@ const app = initializeApp(firebaseConfig)
 
 // 初始化 Firestore
 export const db = getFirestore(app)
+
+// 初始化 Auth
+export const auth = getAuth(app)
+export const googleProvider = new GoogleAuthProvider()
+
+// 限制只能用學校帳號登入
+googleProvider.setCustomParameters({
+  hd: 'hlbh.hlc.edu.tw' // 主要網域限制
+})
+
+/** 允許的 email 網域 */
+export const ALLOWED_DOMAINS = ['hlbh.hlc.edu.tw', 'stu.hlbh.hlc.edu.tw']
+
+/** 老師的 email */
+export const TEACHER_EMAIL = 'walala@hlbh.hlc.edu.tw'
+
+/** 檢查 email 是否允許 */
+export function isAllowedEmail(email: string): boolean {
+  return ALLOWED_DOMAINS.some(domain => email.endsWith('@' + domain))
+}
+
+/** 檢查是否為老師 */
+export function isTeacher(email: string): boolean {
+  return email === TEACHER_EMAIL
+}
+
+/** 檢查是否為學生 */
+export function isStudent(email: string): boolean {
+  return email.endsWith('@stu.hlbh.hlc.edu.tw')
+}
