@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> **版本：v1.2** ｜ 更新日期：2026-02-26
+> **版本：v1.3** ｜ 更新日期：2026-02-27
 
 ## Coding Style
 
@@ -82,6 +82,67 @@ git checkout <commit編號> -- CLAUDE.md
 
 ---
 
+## 部署踩坑筆記
+
+### GitHub Pages + React Router
+
+| 問題 | 原因 | 解法 |
+|------|------|------|
+| 部署後空白頁面 | `BrowserRouter` 無法在靜態託管運作 | 改用 `HashRouter` |
+| 路由 404 | GitHub Pages 找不到實際檔案 | URL 變成 `/#/path` 格式 |
+
+```tsx
+// ❌ 錯誤
+import { BrowserRouter } from 'react-router-dom'
+
+// ✅ 正確（GitHub Pages）
+import { HashRouter } from 'react-router-dom'
+```
+
+### Vite + GitHub Pages
+
+```ts
+// vite.config.ts
+export default defineConfig({
+  base: '/repo-name/',  // 必須設定，否則資源路徑錯誤
+})
+```
+
+### Firebase Authentication + GitHub Pages
+
+| 問題 | 原因 | 解法 |
+|------|------|------|
+| 登入失敗 | GitHub Pages 網域未授權 | Firebase Console → Authentication → Settings → Authorized domains → 新增 `username.github.io` |
+
+### Google OAuth 網域限制
+
+| 問題 | 原因 | 解法 |
+|------|------|------|
+| 子網域帳號無法登入 | `hd` 參數限制太嚴格 | 移除 `hd` 參數，改為登入後驗證 email |
+
+```ts
+// ❌ 錯誤：@stu.hlbh.hlc.edu.tw 無法選擇帳號
+googleProvider.setCustomParameters({
+  hd: 'hlbh.hlc.edu.tw'
+})
+
+// ✅ 正確：登入後再驗證
+const result = await signInWithPopup(auth, googleProvider)
+if (!isAllowedEmail(result.user.email)) {
+  await signOut(auth)
+  setError('請使用學校帳號登入')
+}
+```
+
+### Firebase Firestore 免費方案
+
+- 儲存空間：1 GB
+- 讀取：50,000 次/天
+- 寫入：20,000 次/天
+- 適合：80 人以下的班級教學使用綽綽有餘
+
+---
+
 ## 版次紀錄
 
 | 版本 | 日期 | 異動說明 |
@@ -89,3 +150,4 @@ git checkout <commit編號> -- CLAUDE.md
 | v1.0 | 2026-02-26 | 初版：建立 KISS / DRY / YAGNI / SOLID 設計原則 |
 | v1.1 | 2026-02-26 | 新增：命名與中文註解規範、中英雙語錯誤處理、版次紀錄 |
 | v1.2 | 2026-02-26 | 新增：版本控制規範，每次改版前須先 git commit |
+| v1.3 | 2026-02-27 | 新增：部署踩坑筆記（GitHub Pages、Firebase Auth、Google OAuth） |
