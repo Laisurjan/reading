@@ -29,9 +29,9 @@ export function TeacherHome() {
       )
     : []
 
-  const handleCreateClass = () => {
+  const handleCreateClass = async () => {
     if (!newClassName.trim()) return
-    const newClass = createClass(newClassName.trim())
+    const newClass = await createClass(newClassName.trim())
     setSelectedClassId(newClass.id)
     setNewClassName('')
     setIsCreatingClass(false)

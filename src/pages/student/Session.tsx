@@ -28,9 +28,17 @@ export function SessionPage() {
   const saveDraft = useStore((s) => s.saveDraft)
   const getDraft = useStore((s) => s.getDraft)
   const clearCurrentStudent = useStore((s) => s.clearCurrentStudent)
+  const subscribeToSession = useStore((s) => s.subscribeToSession)
 
   const session = id ? getSession(id) : undefined
   const text = session?.texts[0]
+
+  // 訂閱即時更新（互看功能需要）
+  useEffect(() => {
+    if (!id) return
+    const unsubscribe = subscribeToSession(id)
+    return () => unsubscribe()
+  }, [id, subscribeToSession])
 
   // 如果沒有登入或找不到任務，導回首頁
   useEffect(() => {
@@ -64,9 +72,9 @@ export function SessionPage() {
     return 'A2'
   }
 
-  const handleStepComplete = (fromStep: Step) => {
+  const handleStepComplete = async (fromStep: Step) => {
     const nextStep = getNextStep(fromStep)
-    updateStudentStep(nextStep)
+    await updateStudentStep(nextStep)
   }
 
   const handleExit = () => {
@@ -164,7 +172,7 @@ function StepR({
 }: {
   text: Text
   isPaperMode: boolean
-  onComplete: () => void
+  onComplete: () => Promise<void> | void
 }) {
   if (isPaperMode) {
     return (
@@ -229,8 +237,8 @@ function StepI({
 }: {
   text: Text
   isPaperMode: boolean
-  onComplete: () => void
-  submitResponse: (step: 'I' | 'A1' | 'A2', content: string) => void
+  onComplete: () => Promise<void> | void
+  submitResponse: (step: 'I' | 'A1' | 'A2', content: string) => Promise<void>
   getResponse: (step: 'I' | 'A1' | 'A2') => Response | undefined
   saveDraft: (step: 'I' | 'A1' | 'A2', content: string) => void
   getDraft: (step: 'I' | 'A1' | 'A2') => string
@@ -249,13 +257,13 @@ function StepI({
     setContent((prev) => prev.trim() ? prev + '\n\n' + question : question)
   }, [])
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (content.trim().length < 10) {
       alert('內容太短了，再多寫一點吧 ｜ Content too short')
       return
     }
-    submitResponse('I', content.trim())
-    onComplete()
+    await submitResponse('I', content.trim())
+    await onComplete()
   }
 
   return (
@@ -321,7 +329,7 @@ function StepShare({
   description: string
   myResponse: Response | undefined
   otherResponses: Array<Response & { studentName: string }>
-  onComplete: () => void
+  onComplete: () => Promise<void> | void
 }) {
   const [inspired, setInspired] = useState<Set<string>>(new Set())
   const stepColor = step === 'I' ? 'bg-step-i' : 'bg-step-a1'
@@ -396,8 +404,8 @@ function StepA1({
   saveDraft,
   getDraft,
 }: {
-  onComplete: () => void
-  submitResponse: (step: 'I' | 'A1' | 'A2', content: string) => void
+  onComplete: () => Promise<void> | void
+  submitResponse: (step: 'I' | 'A1' | 'A2', content: string) => Promise<void>
   getResponse: (step: 'I' | 'A1' | 'A2') => Response | undefined
   saveDraft: (step: 'I' | 'A1' | 'A2', content: string) => void
   getDraft: (step: 'I' | 'A1' | 'A2') => string
@@ -416,13 +424,13 @@ function StepA1({
     setContent((prev) => prev.trim() ? prev + '\n\n' + question : question)
   }, [])
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (content.trim().length < 10) {
       alert('內容太短了，再多寫一點吧 ｜ Content too short')
       return
     }
-    submitResponse('A1', content.trim())
-    onComplete()
+    await submitResponse('A1', content.trim())
+    await onComplete()
   }
 
   return (
@@ -484,7 +492,7 @@ function StepA2({
   text,
   onExit,
 }: {
-  submitResponse: (step: 'I' | 'A1' | 'A2', content: string) => void
+  submitResponse: (step: 'I' | 'A1' | 'A2', content: string) => Promise<void>
   getResponse: (step: 'I' | 'A1' | 'A2') => Response | undefined
   saveDraft: (step: 'I' | 'A1' | 'A2', content: string) => void
   getDraft: (step: 'I' | 'A1' | 'A2') => string
@@ -523,13 +531,13 @@ function StepA2({
     return () => clearTimeout(timer)
   }, [goal, action, connection, deadline, saveDraft])
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!goal.trim() || !action.trim()) {
       alert('請填寫目標和行動 ｜ Please fill in goal and action')
       return
     }
     const content = `【目標】${goal}\n【行動】${action}\n【與文章的關聯】${connection}\n【預計完成時間】${deadline}`
-    submitResponse('A2', content)
+    await submitResponse('A2', content)
     setIsCompleted(true)
   }
 

@@ -50,7 +50,7 @@ export function CreateSession() {
     )
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     // 紙本模式只需要任務名稱和文本標題
@@ -72,7 +72,7 @@ export function CreateSession() {
     if (enableA1Share && enableA1) enabledSteps.push('A1-share')
     if (enableA2) enabledSteps.push('A2')
 
-    const session = createSession({
+    const session = await createSession({
       classId,
       title: title.trim(),
       mode: 'single',

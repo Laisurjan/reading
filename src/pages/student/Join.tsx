@@ -10,40 +10,41 @@ import { useStore } from '../../store/useStore'
 export function Join() {
   const navigate = useNavigate()
   const joinSession = useStore((s) => s.joinSession)
-  const getSessionByCode = useStore((s) => s.getSessionByCode)
 
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [error, setError] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setIsLoading(true)
 
     const trimmedCode = code.trim()
     const trimmedName = name.trim()
 
     if (!trimmedCode || !trimmedName) {
       setError('請填寫代碼和座號姓名 ｜ Please fill in code and name')
+      setIsLoading(false)
       return
     }
 
-    // 先檢查任務是否存在
-    const session = getSessionByCode(trimmedCode)
-    if (!session) {
-      setError('找不到此任務，請確認代碼是否正確 ｜ Session not found')
-      return
-    }
+    try {
+      // 加入任務（會自動檢查是否存在）
+      const student = await joinSession(trimmedCode, trimmedName)
+      if (!student) {
+        setError('找不到此任務，請確認代碼是否正確 ｜ Session not found')
+        setIsLoading(false)
+        return
+      }
 
-    // 加入任務
-    const student = joinSession(trimmedCode, trimmedName)
-    if (!student) {
+      // 導向任務頁面
+      navigate(`/session/${student.sessionId}`)
+    } catch (err) {
       setError('加入失敗，請稍後再試 ｜ Failed to join')
-      return
+      setIsLoading(false)
     }
-
-    // 導向任務頁面
-    navigate(`/session/${session.id}`)
   }
 
   return (
@@ -106,9 +107,10 @@ export function Join() {
           <div className="space-y-3 pt-4">
             <button
               type="submit"
-              className="w-full bg-primary hover:bg-primary/90 text-white rounded-lg py-3 px-6 font-medium transition-colors"
+              disabled={isLoading}
+              className="w-full bg-primary hover:bg-primary/90 text-white rounded-lg py-3 px-6 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              加入任務
+              {isLoading ? '加入中...' : '加入任務'}
             </button>
             <button
               type="button"

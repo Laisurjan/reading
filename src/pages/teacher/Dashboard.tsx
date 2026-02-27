@@ -3,7 +3,7 @@
  * 查看全班學生進度與回答內容
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Layout } from '../../components/Layout'
 import { useStore } from '../../store/useStore'
@@ -19,6 +19,7 @@ export function Dashboard() {
   const deleteSession = useStore((s) => s.deleteSession)
   const getSessionStudents = useStore((s) => s.getSessionStudents)
   const getSessionResponses = useStore((s) => s.getSessionResponses)
+  const subscribeToSession = useStore((s) => s.subscribeToSession)
 
   const session = id ? getSession(id) : undefined
   const sessionClass = session ? getClass(session.classId) : undefined
@@ -27,6 +28,13 @@ export function Dashboard() {
 
   const [selectedStep, setSelectedStep] = useState<'all' | 'I' | 'A1' | 'A2'>('all')
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null)
+
+  // 訂閱即時更新
+  useEffect(() => {
+    if (!id) return
+    const unsubscribe = subscribeToSession(id)
+    return () => unsubscribe()
+  }, [id, subscribeToSession])
 
   if (!session) {
     return (
@@ -209,9 +217,9 @@ export function Dashboard() {
           ← 返回老師專區
         </button>
         <button
-          onClick={() => {
+          onClick={async () => {
             if (confirm(`確定要刪除「${session.title}」嗎？此操作無法復原。\n\nAre you sure to delete this session?`)) {
-              deleteSession(session.id)
+              await deleteSession(session.id)
               navigate('/teacher')
             }
           }}
