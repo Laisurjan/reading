@@ -25,10 +25,8 @@ export const db = getFirestore(app)
 export const auth = getAuth(app)
 export const googleProvider = new GoogleAuthProvider()
 
-// 限制只能用學校帳號登入
-googleProvider.setCustomParameters({
-  hd: 'hlbh.hlc.edu.tw' // 主要網域限制
-})
+// 不在這裡限制網域，改為登入後驗證
+// 這樣 @stu.hlbh.hlc.edu.tw 和 @hlbh.hlc.edu.tw 都能選擇帳號
 
 /** 允許的 email 網域 */
 export const ALLOWED_DOMAINS = ['hlbh.hlc.edu.tw', 'stu.hlbh.hlc.edu.tw']
