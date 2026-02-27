@@ -91,8 +91,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (err: unknown) {
       console.error('登入失敗:', err)
-      if (err instanceof Error && err.message.includes('popup-closed')) {
-        // 使用者關閉彈窗，不顯示錯誤
+      if (err instanceof Error) {
+        // 使用者關閉彈窗
+        if (err.message.includes('popup-closed') || err.message.includes('cancelled')) {
+          return
+        }
+        // 彈窗被阻擋
+        if (err.message.includes('popup-blocked')) {
+          setError('彈出視窗被阻擋，請允許此網站的彈出視窗')
+          return
+        }
+        // 顯示實際錯誤訊息以便除錯
+        setError(`登入失敗：${err.message}`)
         return
       }
       setError('登入失敗，請稍後再試')
