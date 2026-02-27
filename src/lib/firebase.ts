@@ -46,7 +46,10 @@ export function isTeacher(email: string): boolean {
   return email === TEACHER_EMAIL
 }
 
-/** 檢查是否為學生 */
+/** 檢查是否為學生（@stu.hlbh.hlc.edu.tw 或 @hlbh.hlc.edu.tw，但排除老師） */
 export function isStudent(email: string): boolean {
-  return email.endsWith('@stu.hlbh.hlc.edu.tw')
+  // 老師不是學生
+  if (email === TEACHER_EMAIL) return false
+  // 學生網域或教職員網域都可當學生登入
+  return email.endsWith('@stu.hlbh.hlc.edu.tw') || email.endsWith('@hlbh.hlc.edu.tw')
 }
