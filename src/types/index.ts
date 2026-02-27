@@ -33,6 +33,18 @@ export interface Text {
 /** 可選步驟 */
 export type OptionalStep = 'I-share' | 'A1' | 'A1-share' | 'A2'
 
+/** 書籍資訊（選填） */
+export interface BookInfo {
+  /** 書籍封面圖（base64） */
+  coverImage?: string
+  /** 書籍作者 */
+  author?: string
+  /** 出版社 */
+  publisher?: string
+  /** 花蓮高商圖書館索書號 */
+  libraryCallNumber?: string
+}
+
 /** 閱讀任務 */
 export interface Session {
   id: string
@@ -51,6 +63,8 @@ export interface Session {
   flowControl: FlowControl
   currentStep: 'waiting' | Step
   createdAt: string
+  /** 書籍資訊（選填） */
+  bookInfo?: BookInfo
 }
 
 /** 學生 */
@@ -93,6 +107,8 @@ export interface CreateSessionInput {
   grouping: GroupingType
   groupSize?: number
   flowControl: FlowControl
+  /** 書籍資訊（選填） */
+  bookInfo?: BookInfo
 }
 
 /** 品質標準 */

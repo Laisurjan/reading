@@ -5,7 +5,7 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth'
-import { auth, googleProvider, isAllowedEmail, isTeacher, isStudent, TEACHER_EMAIL } from '../lib/firebase'
+import { auth, googleProvider, isAllowedEmail, isTeacher, isStudent } from '../lib/firebase'
 
 interface AuthContextType {
   /** 當前使用者 */
@@ -16,8 +16,8 @@ interface AuthContextType {
   role: 'teacher' | 'student' | null
   /** 錯誤訊息 */
   error: string | null
-  /** Google 登入 */
-  login: () => Promise<void>
+  /** Google 登入（需指定選擇的角色） */
+  login: (selectedRole: 'teacher' | 'student') => Promise<void>
   /** 登出 */
   logout: () => Promise<void>
 }
@@ -60,8 +60,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         : null
     : null
 
-  // Google 登入
-  const login = async () => {
+  // Google 登入（需指定選擇的角色）
+  const login = async (selectedRole: 'teacher' | 'student') => {
     setError(null)
     try {
       const result = await signInWithPopup(auth, googleProvider)
@@ -69,15 +69,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!email || !isAllowedEmail(email)) {
         await signOut(auth)
-        setError('此帳號無法使用本系統\n\n允許的帳號：\n• 學生：@stu.hlbh.hlc.edu.tw\n• 老師：' + TEACHER_EMAIL)
+        setError('此帳號無法使用本系統，請使用學校帳號登入')
         return
       }
 
-      // 檢查是否為有效角色
-      if (!isTeacher(email) && !isStudent(email)) {
-        await signOut(auth)
-        setError('此帳號無法使用本系統\n\n允許的帳號：\n• 學生：@stu.hlbh.hlc.edu.tw\n• 老師：' + TEACHER_EMAIL)
-        return
+      // 驗證角色是否符合
+      if (selectedRole === 'teacher') {
+        // 老師必須是指定帳號
+        if (!isTeacher(email)) {
+          await signOut(auth)
+          setError('此帳號沒有老師權限')
+          return
+        }
+      } else {
+        // 學生必須是學生帳號
+        if (!isStudent(email)) {
+          await signOut(auth)
+          setError('請使用學校的學生帳號登入')
+          return
+        }
       }
     } catch (err: unknown) {
       console.error('登入失敗:', err)

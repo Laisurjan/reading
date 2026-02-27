@@ -13,7 +13,7 @@ import { TextReader } from '../../components/TextReader'
 import { QualityStandards } from '../../components/QualityStandards'
 import { ScaffoldPanel } from '../../components/ScaffoldPanel'
 import { useStore } from '../../store/useStore'
-import type { Text, Response, Step, OptionalStep, Session } from '../../types'
+import type { Text, Response, Step, OptionalStep, Session, BookInfo } from '../../types'
 
 export function SessionPage() {
   const { id } = useParams<{ id: string }>()
@@ -94,6 +94,7 @@ export function SessionPage() {
           <StepR
             text={text}
             isPaperMode={session.isPaperMode}
+            bookInfo={session.bookInfo}
             onComplete={() => handleStepComplete('R')}
           />
         )}
@@ -164,14 +165,67 @@ export function SessionPage() {
 // 為了向後兼容，保留 Session 作為 export
 export { SessionPage as Session }
 
+/** 書籍資訊卡片 */
+function BookInfoCard({ bookInfo }: { bookInfo: BookInfo }) {
+  const [expanded, setExpanded] = useState(false)
+  const hasInfo = bookInfo.author || bookInfo.publisher || bookInfo.libraryCallNumber || bookInfo.coverImage
+
+  if (!hasInfo) return null
+
+  return (
+    <div className="bg-amber-50 rounded-lg border border-amber-200 overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-amber-100 transition-colors"
+      >
+        <span className="text-sm font-medium text-amber-800">
+          📖 想借閱或購買這本書？
+        </span>
+        <span className="text-amber-600">{expanded ? '▲' : '▼'}</span>
+      </button>
+      {expanded && (
+        <div className="px-4 pb-4 flex gap-4">
+          {bookInfo.coverImage && (
+            <img
+              src={bookInfo.coverImage}
+              alt="書籍封面"
+              className="w-20 h-28 object-cover rounded shadow-sm flex-shrink-0"
+            />
+          )}
+          <div className="space-y-1 text-sm">
+            {bookInfo.author && (
+              <p className="text-gray-700">
+                <span className="text-gray-500">作者：</span>{bookInfo.author}
+              </p>
+            )}
+            {bookInfo.publisher && (
+              <p className="text-gray-700">
+                <span className="text-gray-500">出版社：</span>{bookInfo.publisher}
+              </p>
+            )}
+            {bookInfo.libraryCallNumber && (
+              <p className="text-gray-700">
+                <span className="text-gray-500">花商圖書館索書號：</span>
+                <span className="font-mono font-medium text-primary">{bookInfo.libraryCallNumber}</span>
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** R 步驟：閱讀 */
 function StepR({
   text,
   isPaperMode,
+  bookInfo,
   onComplete,
 }: {
   text: Text
   isPaperMode: boolean
+  bookInfo?: BookInfo
   onComplete: () => Promise<void> | void
 }) {
   if (isPaperMode) {
@@ -196,6 +250,7 @@ function StepR({
             讀完後點擊下方按鈕繼續。
           </p>
         </div>
+        {bookInfo && <BookInfoCard bookInfo={bookInfo} />}
         <button
           onClick={onComplete}
           className="w-full bg-step-r hover:bg-step-r/90 text-white rounded-lg py-4 px-6 font-medium transition-colors text-lg"
@@ -215,6 +270,7 @@ function StepR({
         <p className="text-gray-600 mt-2">專心閱讀以下文章</p>
       </div>
       <TextReader text={text} />
+      {bookInfo && <BookInfoCard bookInfo={bookInfo} />}
       <button
         onClick={onComplete}
         className="w-full bg-step-r hover:bg-step-r/90 text-white rounded-lg py-4 px-6 font-medium transition-colors text-lg"

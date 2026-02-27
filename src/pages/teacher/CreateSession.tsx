@@ -25,6 +25,12 @@ export function CreateSession() {
   const [textSource, setTextSource] = useState('')
   const [textContent, setTextContent] = useState('')
 
+  // 書籍資訊（選填）
+  const [bookCoverImage, setBookCoverImage] = useState('')
+  const [bookAuthor, setBookAuthor] = useState('')
+  const [bookPublisher, setBookPublisher] = useState('')
+  const [libraryCallNumber, setLibraryCallNumber] = useState('')
+
   // 步驟設定（預設全部啟用）
   const [enableIShare, setEnableIShare] = useState(true)
   const [enableA1, setEnableA1] = useState(true)
@@ -32,6 +38,24 @@ export function CreateSession() {
   const [enableA2, setEnableA2] = useState(true)
 
   const [createdSession, setCreatedSession] = useState<{ joinCode: string; id: string } | null>(null)
+
+  /** 處理書籍封面上傳 */
+  const handleCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // 限制檔案大小（500KB）
+    if (file.size > 500 * 1024) {
+      alert('圖片檔案過大，請選擇 500KB 以下的圖片 ｜ Image too large, please select under 500KB')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      setBookCoverImage(event.target?.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
 
   // 如果沒有班級 ID，導回老師專區
   if (!classId || !currentClass) {
@@ -72,6 +96,16 @@ export function CreateSession() {
     if (enableA1Share && enableA1) enabledSteps.push('A1-share')
     if (enableA2) enabledSteps.push('A2')
 
+    // 組合書籍資訊（只有有填寫的欄位才加入）
+    const bookInfo = (bookCoverImage || bookAuthor || bookPublisher || libraryCallNumber)
+      ? {
+          coverImage: bookCoverImage || undefined,
+          author: bookAuthor.trim() || undefined,
+          publisher: bookPublisher.trim() || undefined,
+          libraryCallNumber: libraryCallNumber.trim() || undefined,
+        }
+      : undefined
+
     const session = await createSession({
       classId,
       title: title.trim(),
@@ -88,6 +122,7 @@ export function CreateSession() {
       ],
       grouping: 'none',
       flowControl: 'free',
+      bookInfo,
     })
 
     setCreatedSession({ joinCode: session.joinCode, id: session.id })
@@ -276,6 +311,99 @@ export function CreateSession() {
               </p>
             </div>
           )}
+        </div>
+
+        <hr className="border-gray-100" />
+
+        {/* 書籍資訊（選填） */}
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium text-primary">
+            書籍資訊
+            <span className="text-sm text-gray-400 font-normal ml-2">（選填，讓學生可借閱或購買）</span>
+          </h3>
+
+          {/* 書籍封面 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              書籍封面截圖
+            </label>
+            <div className="flex items-start gap-4">
+              {bookCoverImage ? (
+                <div className="relative">
+                  <img
+                    src={bookCoverImage}
+                    alt="書籍封面"
+                    className="w-24 h-32 object-cover rounded-lg border border-gray-200"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setBookCoverImage('')}
+                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-sm hover:bg-red-600"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <label className="w-24 h-32 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors">
+                  <span className="text-2xl text-gray-400">📷</span>
+                  <span className="text-xs text-gray-400 mt-1">上傳圖片</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleCoverUpload}
+                    className="hidden"
+                  />
+                </label>
+              )}
+              <p className="text-xs text-gray-400 mt-2">
+                建議尺寸：封面比例約 3:4<br />
+                檔案上限：500KB
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                書籍作者
+              </label>
+              <input
+                type="text"
+                value={bookAuthor}
+                onChange={(e) => setBookAuthor(e.target.value)}
+                placeholder="例如：村上春樹"
+                className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                出版社
+              </label>
+              <input
+                type="text"
+                value={bookPublisher}
+                onChange={(e) => setBookPublisher(e.target.value)}
+                placeholder="例如：時報出版"
+                className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              花蓮高商圖書館索書號
+            </label>
+            <input
+              type="text"
+              value={libraryCallNumber}
+              onChange={(e) => setLibraryCallNumber(e.target.value)}
+              placeholder="例如：861.57 8466"
+              className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              填寫後學生可前往圖書館借閱
+            </p>
+          </div>
         </div>
 
         <hr className="border-gray-100" />

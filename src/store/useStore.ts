@@ -136,6 +136,7 @@ export const useStore = create<Store>()((set, get) => ({
       flowControl: data.flowControl,
       currentStep: 'waiting',
       createdAt: new Date().toISOString(),
+      bookInfo: data.bookInfo,
     }
     const docRef = await addDoc(collection(db, 'sessions'), session)
     const sessionWithId = { ...session, id: docRef.id } as Session
