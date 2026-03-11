@@ -122,22 +122,26 @@ export const useStore = create<Store>()((set, get) => ({
   },
 
   createSession: async (data) => {
+    // 建立基本 session 物件（不含可選欄位，避免 undefined 導致 Firestore 錯誤）
     const session: Omit<Session, 'id'> = {
       classId: data.classId,
       title: data.title,
       mode: data.mode,
       isPaperMode: data.isPaperMode,
       enabledSteps: data.enabledSteps,
-      theme: data.theme,
       texts: data.texts.map((t) => ({ ...t, id: generateId() })),
       joinCode: generateJoinCode(),
       grouping: data.grouping,
-      groupSize: data.groupSize,
       flowControl: data.flowControl,
       currentStep: 'waiting',
       createdAt: new Date().toISOString(),
-      bookInfo: data.bookInfo,
     }
+
+    // 只有有值時才加入可選欄位（Firestore 不接受 undefined）
+    if (data.theme) session.theme = data.theme
+    if (data.groupSize) session.groupSize = data.groupSize
+    if (data.bookInfo) session.bookInfo = data.bookInfo
+
     const docRef = await addDoc(collection(db, 'sessions'), session)
     const sessionWithId = { ...session, id: docRef.id } as Session
     set((state) => ({ sessions: [...state.sessions, sessionWithId] }))
