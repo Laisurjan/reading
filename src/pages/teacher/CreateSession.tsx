@@ -38,6 +38,8 @@ export function CreateSession() {
   const [enableA2, setEnableA2] = useState(true)
 
   const [createdSession, setCreatedSession] = useState<{ joinCode: string; id: string } | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   /** 處理書籍封面上傳 */
   const handleCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -63,9 +65,12 @@ export function CreateSession() {
       <Layout title="錯誤">
         <div className="text-center py-12">
           <p className="text-gray-600 mb-4">請先選擇班級</p>
+          <p className="text-gray-400 text-sm mb-4">
+            （除錯：classId={classId || '空'}, currentClass={currentClass ? '有' : '無'}）
+          </p>
           <button
             onClick={() => navigate('/teacher')}
-            className="text-primary hover:underline"
+            className="text-primary hover:underline cursor-pointer"
           >
             返回老師專區
           </button>
@@ -74,8 +79,10 @@ export function CreateSession() {
     )
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
+    console.log('handleSubmit 被呼叫了！')
+    e?.preventDefault()
+    setSubmitError(null)
 
     // 紙本模式只需要任務名稱和文本標題
     if (!title.trim() || !textTitle.trim()) {
@@ -106,26 +113,39 @@ export function CreateSession() {
         }
       : undefined
 
-    const session = await createSession({
-      classId,
-      title: title.trim(),
-      mode: 'single',
-      isPaperMode,
-      enabledSteps,
-      texts: [
-        {
-          title: textTitle.trim(),
-          author: textAuthor.trim() || '佚名',
-          source: textSource.trim() || '未註明出處',
-          content: isPaperMode ? '（紙本閱讀）' : textContent.trim(),
-        },
-      ],
-      grouping: 'none',
-      flowControl: 'free',
-      bookInfo,
-    })
+    setIsSubmitting(true)
 
-    setCreatedSession({ joinCode: session.joinCode, id: session.id })
+    try {
+      const session = await createSession({
+        classId,
+        title: title.trim(),
+        mode: 'single',
+        isPaperMode,
+        enabledSteps,
+        texts: [
+          {
+            title: textTitle.trim(),
+            author: textAuthor.trim() || '佚名',
+            source: textSource.trim() || '未註明出處',
+            content: isPaperMode ? '（紙本閱讀）' : textContent.trim(),
+          },
+        ],
+        grouping: 'none',
+        flowControl: 'free',
+        bookInfo,
+      })
+
+      setCreatedSession({ joinCode: session.joinCode, id: session.id })
+    } catch (error) {
+      console.error('建立任務失敗 | Failed to create session:', error)
+      setSubmitError(
+        error instanceof Error
+          ? `建立失敗：${error.message} ｜ Failed: ${error.message}`
+          : '建立任務失敗，請稍後再試 ｜ Failed to create session, please try again'
+      )
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   // 建立成功畫面
@@ -479,20 +499,30 @@ export function CreateSession() {
           </div>
         </div>
 
+        {/* 錯誤訊息 */}
+        {submitError && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
+            {submitError}
+          </div>
+        )}
+
         {/* 送出按鈕 */}
-        <div className="flex gap-4 pt-4">
+        <div className="flex gap-4 pt-4 relative z-10">
           <button
             type="button"
             onClick={() => navigate('/teacher')}
-            className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg py-3 px-6 transition-colors"
+            disabled={isSubmitting}
+            className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg py-3 px-6 transition-colors disabled:opacity-50 cursor-pointer"
           >
             取消
           </button>
           <button
-            type="submit"
-            className="flex-1 bg-primary hover:bg-primary/90 text-white rounded-lg py-3 px-6 font-medium transition-colors"
+            type="button"
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            className="flex-1 bg-primary hover:bg-primary/90 text-white rounded-lg py-3 px-6 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
-            建立任務
+            {isSubmitting ? '建立中...' : '建立任務'}
           </button>
         </div>
       </form>
