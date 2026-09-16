@@ -400,7 +400,19 @@ export function Dashboard() {
                   )}
                   <p className="text-gray-800 font-serif leading-relaxed whitespace-pre-wrap break-words">
                     {response.content}
+                    {response.page && (
+                      <span className="text-sm text-gray-400 ml-2">p.{response.page}</span>
+                    )}
                   </p>
+                  {/* 瓶中信：學生為什麼選這一段，是這個玩法真正的內容 */}
+                  {response.why && (
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <p className="text-xs text-gray-400 mb-1">為什麼選這段</p>
+                      <p className="text-gray-700 font-serif leading-relaxed whitespace-pre-wrap break-words">
+                        {response.why}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             )
