@@ -1,32 +1,47 @@
 /**
  * RIA 進度條元件
- * 顯示：R → I → 互看 → A1 → 互看 → A2
+ * 只顯示這份任務實際會走到的步驟，名稱依玩法而異
+ * （經典：R → I → 互看 → A1 → 互看 → A2；賣書：選書 → 寫推薦 → 投票 → 結果）
  */
 
-import type { Step } from '../types'
+import type { Step, OptionalStep, ActivityType } from '../types'
+import { getStepLabel } from '../utils/helpers'
 
 interface ProgressBarProps {
   currentStep: Step
+  /** 這份任務啟用的可選步驟。未提供時顯示全部（向後相容） */
+  enabledSteps?: OptionalStep[]
+  activityType?: ActivityType
 }
 
-/** 所有步驟定義 */
-const STEPS: { key: Step; label: string; color: string }[] = [
-  { key: 'R', label: 'R 閱讀', color: 'bg-step-r' },
-  { key: 'I', label: 'I 重述', color: 'bg-step-i' },
-  { key: 'I-share', label: '互看', color: 'bg-step-i' },
-  { key: 'A1', label: 'A1 經驗', color: 'bg-step-a1' },
-  { key: 'A1-share', label: '互看', color: 'bg-step-a1' },
-  { key: 'A2', label: 'A2 行動', color: 'bg-step-a2' },
+/** 全部步驟的順序與顏色 */
+const ALL_STEPS: { key: Step; color: string }[] = [
+  { key: 'R', color: 'bg-step-r' },
+  { key: 'I', color: 'bg-step-i' },
+  { key: 'I-share', color: 'bg-step-i' },
+  { key: 'A1', color: 'bg-step-a1' },
+  { key: 'A1-share', color: 'bg-step-a1' },
+  { key: 'A2', color: 'bg-step-a2' },
 ]
 
-export function ProgressBar({ currentStep }: ProgressBarProps) {
-  const currentIndex = STEPS.findIndex((s) => s.key === currentStep)
+export function ProgressBar({ currentStep, enabledSteps, activityType = 'classic' }: ProgressBarProps) {
+  // 賣書模式的最後一格是「結果」，即使 A2 沒啟用也要顯示
+  const showFinalAsResult = activityType === 'pitch'
+
+  const steps = ALL_STEPS.filter((s) => {
+    if (s.key === 'R' || s.key === 'I') return true
+    if (!enabledSteps) return true
+    if (s.key === 'A2' && showFinalAsResult) return true
+    return enabledSteps.includes(s.key as OptionalStep)
+  })
+
+  const currentIndex = steps.findIndex((s) => s.key === currentStep)
 
   return (
     <div className="w-full py-4">
       {/* 手機版：簡化顯示 */}
       <div className="flex items-center justify-between md:hidden">
-        {STEPS.map((step, index) => {
+        {steps.map((step, index) => {
           const isActive = index === currentIndex
           const isDone = index < currentIndex
 
@@ -49,7 +64,7 @@ export function ProgressBar({ currentStep }: ProgressBarProps) {
                   ${isActive ? 'text-primary font-medium' : 'text-gray-400'}
                 `}
               >
-                {step.label.split(' ')[0]}
+                {getStepLabel(step.key, activityType)}
               </span>
             </div>
           )
@@ -58,7 +73,7 @@ export function ProgressBar({ currentStep }: ProgressBarProps) {
 
       {/* 桌面版：完整顯示 */}
       <div className="hidden md:flex items-center justify-center gap-2">
-        {STEPS.map((step, index) => {
+        {steps.map((step, index) => {
           const isActive = index === currentIndex
           const isDone = index < currentIndex
 
@@ -73,9 +88,9 @@ export function ProgressBar({ currentStep }: ProgressBarProps) {
                   ${!isActive && !isDone ? 'bg-gray-200 text-gray-400' : ''}
                 `}
               >
-                {step.label}
+                {getStepLabel(step.key, activityType)}
               </div>
-              {index < STEPS.length - 1 && (
+              {index < steps.length - 1 && (
                 <div
                   className={`
                     w-6 h-0.5 mx-1

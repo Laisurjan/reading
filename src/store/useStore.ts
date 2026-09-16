@@ -16,8 +16,18 @@ import {
   Unsubscribe
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
-import type { Session, Student, Response, CreateSessionInput, Step, Class } from '../types'
-import { generateId, generateJoinCode } from '../utils/helpers'
+import type {
+  Session,
+  Student,
+  Response,
+  CreateSessionInput,
+  Step,
+  Class,
+  Reaction,
+  MyBook,
+  ShareStep,
+} from '../types'
+import { generateId, generateJoinCode, buildAnonMap } from '../utils/helpers'
 
 interface Store {
   /** 所有班級 */
@@ -30,6 +40,8 @@ interface Store {
   currentStudent: Student | null
   /** 所有學生回答（當前任務的） */
   responses: Response[]
+  /** 所有 💡（當前任務的） */
+  reactions: Reaction[]
   /** 載入狀態 */
   loading: boolean
 
@@ -59,8 +71,24 @@ interface Store {
   submitResponse: (step: 'I' | 'A1' | 'A2', content: string, extra?: Partial<Response>) => Promise<void>
   /** 取得學生在某步驟的回答 */
   getResponse: (step: 'I' | 'A1' | 'A2') => Response | undefined
-  /** 取得同一任務其他學生的回答（互看用） */
-  getOtherResponses: (step: 'I' | 'A1') => Array<Response & { studentName: string }>
+  /** 更新自己帶來的那本書（賣書模式） */
+  updateMyBook: (book: MyBook) => Promise<void>
+  /** 切換 💡（已投過就收回）。超過票數上限時回傳 false 不寫入 */
+  toggleReaction: (responseId: string) => Promise<boolean>
+  /** 某則回答收到幾顆 💡 */
+  getReactionCount: (responseId: string) => number
+  /** 自己是否投過這則 */
+  hasReacted: (responseId: string) => boolean
+  /** 自己已經投出幾票 */
+  getMyReactionCount: () => number
+  /**
+   * 取得同一任務其他學生的回答（互看用）。
+   * shareStep 決定要顯示真名還是匿名代號——由任務的 attribution 設定決定。
+   */
+  getOtherResponses: (
+    step: 'I' | 'A1',
+    shareStep?: ShareStep
+  ) => Array<Response & { studentName: string; myBook?: MyBook }>
   /** 儲存草稿（本地） */
   saveDraft: (step: 'I' | 'A1' | 'A2', content: string) => void
   /** 取得草稿 */
@@ -69,8 +97,17 @@ interface Store {
   clearCurrentStudent: () => void
   /** 取得任務的所有學生（老師用） */
   getSessionStudents: (sessionId: string) => Student[]
-  /** 取得任務的所有回答（老師用） */
-  getSessionResponses: (sessionId: string) => Array<Response & { studentName: string }>
+  /**
+   * 取得任務的所有回答（老師用）。
+   * 老師端一律顯示真名，另附匿名代號方便對照學生畫面。
+   */
+  getSessionResponses: (
+    sessionId: string
+  ) => Array<Response & { studentName: string; anonCode: string; inspireCount: number; myBook?: MyBook }>
+  /** 賣書模式的得票排行（只收錄有票的，票數由高到低） */
+  getPitchRanking: (
+    sessionId: string
+  ) => Array<Response & { studentName: string; anonCode: string; inspireCount: number; myBook?: MyBook }>
 }
 
 /** 草稿儲存 key 前綴 */
@@ -82,6 +119,7 @@ export const useStore = create<Store>()((set, get) => ({
   students: [],
   currentStudent: null,
   responses: [],
+  reactions: [],
   loading: true,
 
   init: async () => {
@@ -127,8 +165,11 @@ export const useStore = create<Store>()((set, get) => ({
       classId: data.classId,
       title: data.title,
       mode: data.mode,
+      activityType: data.activityType,
       isPaperMode: data.isPaperMode,
       enabledSteps: data.enabledSteps,
+      attribution: data.attribution,
+      reactionQuota: data.reactionQuota,
       theme: data.theme,
       texts: data.texts.map((t) => ({ ...t, id: generateId() })),
       joinCode: generateJoinCode(),
@@ -164,10 +205,16 @@ export const useStore = create<Store>()((set, get) => ({
     for (const responseDoc of responsesSnap.docs) {
       await deleteDoc(responseDoc.ref)
     }
+    const reactionsQuery = query(collection(db, 'reactions'), where('sessionId', '==', id))
+    const reactionsSnap = await getDocs(reactionsQuery)
+    for (const reactionDoc of reactionsSnap.docs) {
+      await deleteDoc(reactionDoc.ref)
+    }
     set((state) => ({
       sessions: state.sessions.filter((s) => s.id !== id),
       students: state.students.filter((s) => s.sessionId !== id),
       responses: state.responses.filter((r) => r.sessionId !== id),
+      reactions: state.reactions.filter((r) => r.sessionId !== id),
     }))
   },
 
@@ -239,10 +286,20 @@ export const useStore = create<Store>()((set, get) => ({
       }
     )
 
+    // 訂閱 💡（票數要即時跳動，作者才看得到自己被肯定）
+    const reactionsUnsub = onSnapshot(
+      query(collection(db, 'reactions'), where('sessionId', '==', sessionId)),
+      (snap) => {
+        const reactions = snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as Reaction))
+        set({ reactions })
+      }
+    )
+
     // 回傳取消訂閱函式
     return () => {
       studentsUnsub()
       responsesUnsub()
+      reactionsUnsub()
     }
   },
 
@@ -289,11 +346,82 @@ export const useStore = create<Store>()((set, get) => ({
     )
   },
 
-  getOtherResponses: (step) => {
+  updateMyBook: async (book) => {
+    const student = get().currentStudent
+    if (!student) return
+
+    await updateDoc(doc(db, 'students', student.id), { myBook: book })
+    const updatedStudent = { ...student, myBook: book }
+    set((state) => ({
+      currentStudent: updatedStudent,
+      students: state.students.map((s) => (s.id === student.id ? updatedStudent : s)),
+    }))
+  },
+
+  toggleReaction: async (responseId) => {
+    const student = get().currentStudent
+    if (!student) return false
+
+    const existing = get().reactions.find(
+      (r) => r.responseId === responseId && r.fromStudentId === student.id
+    )
+
+    // 已經投過就收回
+    if (existing) {
+      await deleteDoc(doc(db, 'reactions', existing.id))
+      set((state) => ({ reactions: state.reactions.filter((r) => r.id !== existing.id) }))
+      return true
+    }
+
+    // 檢查票數上限（未設定 quota 代表不限）
+    const session = get().sessions.find((s) => s.id === student.sessionId)
+    const quota = session?.reactionQuota
+    if (quota !== undefined && get().getMyReactionCount() >= quota) {
+      return false
+    }
+
+    const reaction: Omit<Reaction, 'id'> = {
+      sessionId: student.sessionId,
+      responseId,
+      fromStudentId: student.id,
+      createdAt: new Date().toISOString(),
+    }
+    const docRef = await addDoc(collection(db, 'reactions'), reaction)
+    set((state) => ({ reactions: [...state.reactions, { ...reaction, id: docRef.id }] }))
+    return true
+  },
+
+  getReactionCount: (responseId) => {
+    return get().reactions.filter((r) => r.responseId === responseId).length
+  },
+
+  hasReacted: (responseId) => {
+    const student = get().currentStudent
+    if (!student) return false
+    return get().reactions.some(
+      (r) => r.responseId === responseId && r.fromStudentId === student.id
+    )
+  },
+
+  getMyReactionCount: () => {
+    const student = get().currentStudent
+    if (!student) return 0
+    return get().reactions.filter((r) => r.fromStudentId === student.id).length
+  },
+
+  getOtherResponses: (step, shareStep) => {
     const student = get().currentStudent
     if (!student) return []
 
     const students = get().students
+    const session = get().sessions.find((s) => s.id === student.sessionId)
+
+    // 未設定時預設 'real'，舊任務的行為完全不變
+    const attribution = shareStep ? session?.attribution?.[shareStep] ?? 'real' : 'real'
+    const anonMap = buildAnonMap(
+      students.filter((s) => s.sessionId === student.sessionId).map((s) => s.id)
+    )
+
     const otherResponses = get().responses.filter(
       (r) => r.sessionId === student.sessionId &&
              r.step === step &&
@@ -304,7 +432,11 @@ export const useStore = create<Store>()((set, get) => ({
       const s = students.find((s) => s.id === r.studentId)
       return {
         ...r,
-        studentName: s?.name ?? '同學',
+        studentName:
+          attribution === 'anon'
+            ? anonMap.get(r.studentId) ?? '同學'
+            : s?.name ?? '同學',
+        myBook: s?.myBook,
       }
     })
   },
@@ -331,14 +463,28 @@ export const useStore = create<Store>()((set, get) => ({
 
   getSessionResponses: (sessionId) => {
     const students = get().students
+    const reactions = get().reactions
     const responses = get().responses.filter((r) => r.sessionId === sessionId)
+    const anonMap = buildAnonMap(
+      students.filter((s) => s.sessionId === sessionId).map((s) => s.id)
+    )
 
     return responses.map((r) => {
       const student = students.find((s) => s.id === r.studentId)
       return {
         ...r,
         studentName: student?.name ?? '未知學生',
+        anonCode: anonMap.get(r.studentId) ?? '—',
+        inspireCount: reactions.filter((x) => x.responseId === r.id).length,
+        myBook: student?.myBook,
       }
     })
+  },
+
+  getPitchRanking: (sessionId) => {
+    return get()
+      .getSessionResponses(sessionId)
+      .filter((r) => r.step === 'I' && r.inspireCount > 0)
+      .sort((a, b) => b.inspireCount - a.inspireCount)
   },
 }))

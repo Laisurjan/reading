@@ -5,8 +5,30 @@
 /** 步驟類型 */
 export type Step = 'R' | 'I' | 'I-share' | 'A1' | 'A1-share' | 'A2'
 
-/** 共讀模式 */
+/** 共讀模式（文本來源：老師貼一篇 or 老師貼多篇讓學生選） */
 export type SessionMode = 'single' | 'multi'
+
+/**
+ * 活動玩法。與 SessionMode 是兩個不同的軸：
+ * SessionMode 管「文本從哪來」，ActivityType 管「這節課怎麼玩」。
+ * - classic：經典 RIA（全班同一份拆頁，R→I→互看→A1→互看→A2）
+ * - pitch：賣書（各讀各的書，寫一句推薦詞，匿名投票選出前三）
+ * 未來的 bottle（瓶中信）會加在這裡。
+ */
+export type ActivityType = 'classic' | 'pitch'
+
+/**
+ * 互看時的署名方式。
+ * - real：顯示座號＋姓名（舊任務沒有此設定時的預設值）
+ * - anon：顯示匿名代號（同學A、同學B…）
+ *
+ * 注意：這只影響「學生看到的畫面」。回答一定掛 studentId 才存得進資料庫，
+ * 所以老師端一律看得到真名——對學生說明時要說「同學看不到是誰，老師看得到」。
+ */
+export type Attribution = 'anon' | 'real'
+
+/** 有互看畫面的步驟 */
+export type ShareStep = 'I-share' | 'A1-share'
 
 /** 流程控制模式 */
 export type FlowControl = 'teacher' | 'free'
@@ -51,10 +73,22 @@ export interface Session {
   classId: string
   title: string
   mode: SessionMode
+  /**
+   * 活動玩法。舊任務沒有這個欄位，讀取時一律當成 'classic'，
+   * 所以既有任務的行為完全不變。
+   */
+  activityType?: ActivityType
   /** 紙本模式：學生閱讀實體紙本，不在螢幕上閱讀 */
   isPaperMode: boolean
   /** 啟用的步驟（R 和 I 為必要步驟） */
   enabledSteps: OptionalStep[]
+  /**
+   * 各互看步驟的署名方式。未設定的步驟預設 'real'（維持舊任務行為）。
+   * 兩個互看步驟可以不同，例如重述掛名、經驗匿名。
+   */
+  attribution?: Partial<Record<ShareStep, Attribution>>
+  /** 每人可投的 💡 票數上限。未設定＝不限 */
+  reactionQuota?: number
   theme?: string
   texts: Text[]
   joinCode: string
@@ -63,8 +97,17 @@ export interface Session {
   flowControl: FlowControl
   currentStep: 'waiting' | Step
   createdAt: string
-  /** 書籍資訊（選填） */
+  /** 書籍資訊（選填）。整個任務共用一本書時才用，各讀各的書請看 Student.myBook */
   bookInfo?: BookInfo
+}
+
+/** 學生自己帶來的那本書（賣書模式：每人一本不同的書） */
+export interface MyBook {
+  title: string
+  /** 花蓮高商圖書館索書號 */
+  callNumber?: string
+  /** 讀到第幾頁——等於紙本學習單那一格，明說「不用讀完也可以交」 */
+  page?: string
 }
 
 /** 學生 */
@@ -78,6 +121,17 @@ export interface Student {
   chosenTextId?: string
   currentStep: Step
   joinedAt: string
+  /** 賣書模式：學生自己挑的那本書 */
+  myBook?: MyBook
+}
+
+/** 一則「💡 有啟發」。每位學生對同一則回答最多一票 */
+export interface Reaction {
+  id: string
+  sessionId: string
+  responseId: string
+  fromStudentId: string
+  createdAt: string
 }
 
 /** 學生回答 */
@@ -100,8 +154,11 @@ export interface CreateSessionInput {
   classId: string
   title: string
   mode: SessionMode
+  activityType?: ActivityType
   isPaperMode: boolean
   enabledSteps: OptionalStep[]
+  attribution?: Partial<Record<ShareStep, Attribution>>
+  reactionQuota?: number
   theme?: string
   texts: Omit<Text, 'id'>[]
   grouping: GroupingType
@@ -109,6 +166,50 @@ export interface CreateSessionInput {
   flowControl: FlowControl
   /** 書籍資訊（選填） */
   bookInfo?: BookInfo
+}
+
+/** 三種玩法的說明文字與配圖（老師選擇卡片與學生開場畫面共用） */
+export const ACTIVITY_META: Record<
+  ActivityType | 'bottle',
+  {
+    name: string
+    /** 學生端看到的標題，刻意跟老師端不同——用學生的語言 */
+    studentName: string
+    tagline: string
+    description: string
+    image: string
+    card: string
+    available: boolean
+  }
+> = {
+  classic: {
+    name: '經典模式',
+    studentName: '一起拆同一段',
+    tagline: '全班讀同一份拆頁',
+    description: '老師指定一段文字，全班一起走 R 閱讀 → I 重述 → 互看 → A1 經驗 → A2 行動。討論最聚焦。',
+    image: 'modes/classic.jpg',
+    card: 'modes/classic-card.jpg',
+    available: true,
+  },
+  pitch: {
+    name: '賣書模式',
+    studentName: '把這本書推坑給別人',
+    tagline: '各讀各的書，一句話決勝負',
+    description:
+      '每人讀自己手上的書，寫一句 30 字以內的推薦詞。全部匿名上牆，每人 3 票，選出最想被推坑的前三名。',
+    image: 'modes/pitch.jpg',
+    card: 'modes/pitch-card.jpg',
+    available: true,
+  },
+  bottle: {
+    name: '瓶中信模式',
+    studentName: '把想說的話裝進瓶子裡',
+    tagline: '寫給一個不知道是誰的人',
+    description: '每人寫一段，系統配對後漂給另一個人，收到的人回一句。保證每個人都收得到回信。',
+    image: 'modes/bottle.jpg',
+    card: 'modes/bottle-card.jpg',
+    available: false,
+  },
 }
 
 /** 品質標準 */

@@ -6,7 +6,55 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Layout } from '../../components/Layout'
 import { useStore } from '../../store/useStore'
-import type { OptionalStep } from '../../types'
+import { assetUrl } from '../../utils/helpers'
+import type { OptionalStep, ActivityType, Attribution, ShareStep } from '../../types'
+import { ACTIVITY_META } from '../../types'
+
+/** 單一互看步驟的署名方式切換 */
+function AttributionPicker({
+  label,
+  hint,
+  value,
+  onChange,
+  disabled,
+}: {
+  label: string
+  hint: string
+  value: Attribution
+  onChange: (v: Attribution) => void
+  disabled?: boolean
+}) {
+  const options: { key: Attribution; title: string; desc: string }[] = [
+    { key: 'real', title: '掛名', desc: '顯示座號＋姓名' },
+    { key: 'anon', title: '匿名', desc: '顯示同學A、同學B…' },
+  ]
+
+  return (
+    <div className={disabled ? 'opacity-50 pointer-events-none' : ''}>
+      <div className="flex items-baseline justify-between mb-2">
+        <span className="text-sm font-medium text-gray-700">{label}</span>
+        <span className="text-xs text-gray-400">{hint}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {options.map((o) => (
+          <button
+            key={o.key}
+            type="button"
+            onClick={() => onChange(o.key)}
+            className={`p-3 rounded-lg border-2 text-left transition-all cursor-pointer ${
+              value === o.key
+                ? 'border-primary bg-primary/5'
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            <div className="font-medium text-gray-800 text-sm">{o.title}</div>
+            <div className="text-xs text-gray-500 mt-0.5">{o.desc}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 export function CreateSession() {
   const navigate = useNavigate()
@@ -17,6 +65,10 @@ export function CreateSession() {
   const getClass = useStore((s) => s.getClass)
 
   const currentClass = getClass(classId)
+
+  /** 這節課怎麼玩。賣書模式會自動套用它該有的設定，老師不必自己勾 */
+  const [activityType, setActivityType] = useState<ActivityType>('classic')
+  const isPitch = activityType === 'pitch'
 
   const [isPaperMode, setIsPaperMode] = useState(false)
   const [title, setTitle] = useState('')
@@ -36,6 +88,11 @@ export function CreateSession() {
   const [enableA1, setEnableA1] = useState(true)
   const [enableA1Share, setEnableA1Share] = useState(true)
   const [enableA2, setEnableA2] = useState(true)
+
+  // 互看時的署名方式。預設「重述掛名、經驗匿名」——
+  // 重述只是講課文，掛名無妨；經驗講的是自己的事，匿名才敢寫真的
+  const [attrIShare, setAttrIShare] = useState<Attribution>('real')
+  const [attrA1Share, setAttrA1Share] = useState<Attribution>('anon')
 
   const [createdSession, setCreatedSession] = useState<{ joinCode: string; id: string } | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -84,24 +141,39 @@ export function CreateSession() {
     e?.preventDefault()
     setSubmitError(null)
 
-    // 紙本模式只需要任務名稱和文本標題
-    if (!title.trim() || !textTitle.trim()) {
+    // 賣書模式各讀各的書，老師不用貼文本，只需要任務名稱
+    if (!title.trim()) {
+      alert('請填寫任務名稱 ｜ Please fill in the session title')
+      return
+    }
+    if (!isPitch && !textTitle.trim()) {
       alert('請填寫必要欄位 ｜ Please fill in required fields')
       return
     }
 
     // 線上模式需要文本內容
-    if (!isPaperMode && !textContent.trim()) {
+    if (!isPitch && !isPaperMode && !textContent.trim()) {
       alert('請填寫文本內容 ｜ Please fill in text content')
       return
     }
 
     // 組合啟用的步驟
+    // 賣書模式的流程固定是 選書 → 寫推薦 → 投票 → 結果，不開放 A1／A2
     const enabledSteps: OptionalStep[] = []
-    if (enableIShare) enabledSteps.push('I-share')
-    if (enableA1) enabledSteps.push('A1')
-    if (enableA1Share && enableA1) enabledSteps.push('A1-share')
-    if (enableA2) enabledSteps.push('A2')
+    if (isPitch) {
+      enabledSteps.push('I-share')
+    } else {
+      if (enableIShare) enabledSteps.push('I-share')
+      if (enableA1) enabledSteps.push('A1')
+      if (enableA1Share && enableA1) enabledSteps.push('A1-share')
+      if (enableA2) enabledSteps.push('A2')
+    }
+
+    // 署名方式與票數上限
+    const attribution: Partial<Record<ShareStep, Attribution>> = isPitch
+      ? { 'I-share': 'anon' }
+      : { 'I-share': attrIShare, 'A1-share': attrA1Share }
+    const reactionQuota = isPitch ? 3 : undefined
 
     // 組合書籍資訊（只有有填寫的欄位才加入）
     const bookInfo = (bookCoverImage || bookAuthor || bookPublisher || libraryCallNumber)
@@ -120,14 +192,18 @@ export function CreateSession() {
         classId,
         title: title.trim(),
         mode: 'single',
-        isPaperMode,
+        activityType,
+        // 賣書模式一定是紙本：學生讀的是自己手上那本實體書
+        isPaperMode: isPitch ? true : isPaperMode,
         enabledSteps,
+        attribution,
+        reactionQuota,
         texts: [
           {
-            title: textTitle.trim(),
-            author: textAuthor.trim() || '佚名',
-            source: textSource.trim() || '未註明出處',
-            content: isPaperMode ? '（紙本閱讀）' : textContent.trim(),
+            title: isPitch ? '各自帶來的書' : textTitle.trim(),
+            author: isPitch ? '—' : textAuthor.trim() || '佚名',
+            source: isPitch ? '—' : textSource.trim() || '未註明出處',
+            content: isPitch || isPaperMode ? '（紙本閱讀）' : textContent.trim(),
           },
         ],
         grouping: 'none',
@@ -204,8 +280,75 @@ export function CreateSession() {
           <span className="font-medium text-primary ml-1">{currentClass.name}</span>
         </div>
 
-        {/* 閱讀模式選擇 */}
+        {/* 玩法選擇 */}
         <div>
+          <label className="block text-sm font-medium text-gray-700 mb-3">
+            這節課怎麼玩
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {(['classic', 'pitch', 'bottle'] as const).map((key) => {
+              const meta = ACTIVITY_META[key]
+              const selected = key === activityType
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  disabled={!meta.available}
+                  onClick={() => meta.available && setActivityType(key as ActivityType)}
+                  className={`rounded-xl border-2 overflow-hidden text-left transition-all ${
+                    selected
+                      ? 'border-primary ring-2 ring-primary/20'
+                      : 'border-gray-200 hover:border-gray-300'
+                  } ${!meta.available ? 'opacity-55 cursor-not-allowed' : 'cursor-pointer'}`}
+                >
+                  <div className="relative">
+                    <img
+                      src={assetUrl(meta.card)}
+                      alt={meta.name}
+                      className="w-full h-28 object-cover"
+                    />
+                    {!meta.available && (
+                      <span className="absolute top-2 right-2 bg-gray-800/80 text-white text-xs px-2 py-0.5 rounded-full">
+                        製作中
+                      </span>
+                    )}
+                    {selected && (
+                      <span className="absolute top-2 right-2 bg-primary text-white text-xs px-2 py-0.5 rounded-full">
+                        已選
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-3">
+                    <div className="font-medium text-gray-800">{meta.name}</div>
+                    <div className="text-xs text-accent mt-0.5">{meta.tagline}</div>
+                    <div className="text-xs text-gray-500 mt-1.5 leading-relaxed">
+                      {meta.description}
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* 賣書模式的設定都是固定的，直接說明清楚，不給微調 */}
+        {isPitch && (
+          <div className="bg-blue-50 rounded-lg p-4 text-sm text-blue-800 space-y-1.5">
+            <p className="font-medium">賣書模式會自動套用這些設定：</p>
+            <ul className="text-blue-700 space-y-1">
+              <li>• 學生讀的是自己手上的實體書，老師不用貼文本</li>
+              <li>• 推薦詞上限 30 字</li>
+              <li>• 投票牆匿名，每人 3 票</li>
+              <li>• 只顯示前三名，不公布完整名次、不顯示 0 票的人</li>
+            </ul>
+            <p className="text-blue-600 pt-1">
+              記得口頭講一次：<span className="font-medium">同學看不到是誰寫的，但老師看得到。</span>
+            </p>
+          </div>
+        )}
+
+        {/* 閱讀模式選擇（賣書模式固定紙本，不需要選） */}
+        <div className={isPitch ? 'hidden' : ''}>
           <label className="block text-sm font-medium text-gray-700 mb-3">
             閱讀模式
           </label>
@@ -252,15 +395,15 @@ export function CreateSession() {
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="例如：第三課《論幸福》深度閱讀"
+            placeholder={isPitch ? '例如：9/16 班級讀書會・推坑大會' : '例如：第三課《論幸福》深度閱讀'}
             className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
           />
         </div>
 
-        <hr className="border-gray-100" />
+        <hr className={`border-gray-100 ${isPitch ? 'hidden' : ''}`} />
 
-        {/* 文本資訊 */}
-        <div className="space-y-4">
+        {/* 文本資訊（賣書模式每人一本不同的書，由學生自己登記） */}
+        <div className={`space-y-4 ${isPitch ? 'hidden' : ''}`}>
           <h3 className="text-lg font-medium text-primary">文本資訊</h3>
 
           <div>
@@ -333,10 +476,10 @@ export function CreateSession() {
           )}
         </div>
 
-        <hr className="border-gray-100" />
+        <hr className={`border-gray-100 ${isPitch ? 'hidden' : ''}`} />
 
-        {/* 書籍資訊（選填） */}
-        <div className="space-y-4">
+        {/* 書籍資訊（選填）。賣書模式每人一本，書名由學生在「選書」步驟自己填 */}
+        <div className={`space-y-4 ${isPitch ? 'hidden' : ''}`}>
           <h3 className="text-lg font-medium text-primary">
             書籍資訊
             <span className="text-sm text-gray-400 font-normal ml-2">（選填，讓學生可借閱或購買）</span>
@@ -426,10 +569,10 @@ export function CreateSession() {
           </div>
         </div>
 
-        <hr className="border-gray-100" />
+        <hr className={`border-gray-100 ${isPitch ? 'hidden' : ''}`} />
 
-        {/* 步驟設定 */}
-        <div className="space-y-4">
+        {/* 步驟設定（賣書模式流程固定，不開放調整） */}
+        <div className={`space-y-4 ${isPitch ? 'hidden' : ''}`}>
           <h3 className="text-lg font-medium text-primary">練習步驟設定</h3>
           <p className="text-sm text-gray-500">
             R（閱讀）和 I（重述）為必要步驟，以下步驟可依課堂需求自由選擇
@@ -497,6 +640,32 @@ export function CreateSession() {
               <span className="text-gray-700">規劃行動方案</span>
             </label>
           </div>
+        </div>
+
+        {/* 互看署名方式 */}
+        <div className={`space-y-4 ${isPitch ? 'hidden' : ''}`}>
+          <hr className="border-gray-100" />
+          <h3 className="text-lg font-medium text-primary">互看時要不要掛名</h3>
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+            這只影響<span className="font-medium">學生看到的畫面</span>。回答一定掛學號才存得進資料庫，
+            所以<span className="font-medium">老師端一律看得到真名</span>。
+            跟學生說明時請說「同學看不到是誰，老師看得到」，不要說「完全匿名」。
+          </div>
+
+          <AttributionPicker
+            label="互看同學的重述（I）"
+            hint="重述講的是課文，掛名通常沒問題"
+            value={attrIShare}
+            onChange={setAttrIShare}
+            disabled={!enableIShare}
+          />
+          <AttributionPicker
+            label="互看同學的經驗（A1）"
+            hint="經驗講的是自己的事，匿名才敢寫真的"
+            value={attrA1Share}
+            onChange={setAttrA1Share}
+            disabled={!enableA1 || !enableA1Share}
+          />
         </div>
 
         {/* 錯誤訊息 */}

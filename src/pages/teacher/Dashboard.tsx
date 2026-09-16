@@ -8,7 +8,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Layout } from '../../components/Layout'
 import { useStore } from '../../store/useStore'
 import { getStepLabel } from '../../utils/helpers'
-import type { Step } from '../../types'
+import type { Step, ActivityType, OptionalStep } from '../../types'
+import { ACTIVITY_META } from '../../types'
 
 export function Dashboard() {
   const { id } = useParams<{ id: string }>()
@@ -21,10 +22,17 @@ export function Dashboard() {
   const getSessionResponses = useStore((s) => s.getSessionResponses)
   const subscribeToSession = useStore((s) => s.subscribeToSession)
 
+  const getPitchRanking = useStore((s) => s.getPitchRanking)
+  // 訂閱票數陣列，學生投票時儀表板才會即時跳動
+  useStore((s) => s.reactions)
+
   const session = id ? getSession(id) : undefined
   const sessionClass = session ? getClass(session.classId) : undefined
   const students = id ? getSessionStudents(id) : []
   const responses = id ? getSessionResponses(id) : []
+  const activityType: ActivityType = session?.activityType ?? 'classic'
+  const isPitch = activityType === 'pitch'
+  const ranking = id && isPitch ? getPitchRanking(id) : []
 
   const [selectedStep, setSelectedStep] = useState<'all' | 'I' | 'A1' | 'A2'>('all')
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null)
@@ -79,15 +87,30 @@ export function Dashboard() {
       <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               {sessionClass && (
                 <span className="text-sm text-accent font-medium">{sessionClass.name}</span>
               )}
+              <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-medium">
+                {ACTIVITY_META[activityType].name}
+              </span>
               {session.isPaperMode && (
                 <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
                   📄 紙本模式
                 </span>
               )}
+              {/* 哪幾個互看步驟對學生匿名，老師要一眼看得到 */}
+              {(['I-share', 'A1-share'] as const)
+                .filter(
+                  (s) =>
+                    session.enabledSteps?.includes(s as OptionalStep) &&
+                    session.attribution?.[s] === 'anon'
+                )
+                .map((s) => (
+                  <span key={s} className="text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded">
+                    🎭 {getStepLabel(s === 'I-share' ? 'I' : 'A1', activityType)}互看匿名
+                  </span>
+                ))}
             </div>
             <h2 className="font-serif text-xl font-bold text-primary">
               {session.title}
@@ -107,7 +130,15 @@ export function Dashboard() {
       <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
         <h3 className="font-medium text-gray-700 mb-4">進度總覽</h3>
         <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-          {(['R', 'I', 'I-share', 'A1', 'A1-share', 'A2'] as Step[]).map((step) => {
+          {(['R', 'I', 'I-share', 'A1', 'A1-share', 'A2'] as Step[])
+            .filter(
+              (step) =>
+                step === 'R' ||
+                step === 'I' ||
+                step === 'A2' ||
+                session.enabledSteps?.includes(step as OptionalStep)
+            )
+            .map((step) => {
             const count = stepCounts[step] ?? 0
             const colors: Record<string, string> = {
               R: 'bg-step-r',
@@ -123,12 +154,49 @@ export function Dashboard() {
                 className={`rounded-lg p-3 text-center ${colors[step]} text-white`}
               >
                 <p className="text-2xl font-bold">{count}</p>
-                <p className="text-xs opacity-90">{getStepLabel(step)}</p>
+                <p className="text-xs opacity-90">{getStepLabel(step, activityType)}</p>
               </div>
             )
           })}
         </div>
       </div>
+
+      {/* 賣書模式：即時票數排行（老師端顯示真名，投影前先確認要不要露出） */}
+      {isPitch && (
+        <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
+          <h3 className="font-medium text-gray-700 mb-1">目前得票</h3>
+          <p className="text-xs text-gray-400 mb-4">
+            學生端只看得到前三名與匿名代號；這裡是完整名單與真名
+          </p>
+          {ranking.length === 0 ? (
+            <p className="text-gray-500 text-sm py-4 text-center">還沒有人投票</p>
+          ) : (
+            <div className="space-y-2">
+              {ranking.map((r, i) => (
+                <div
+                  key={r.id}
+                  className={`flex items-start gap-3 p-3 rounded-lg ${
+                    i < 3 ? 'bg-accent/10' : 'bg-gray-50'
+                  }`}
+                >
+                  <span className="text-sm font-bold text-accent w-8 shrink-0">#{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-serif text-gray-800 break-words">{r.content}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {r.studentName}
+                      <span className="text-gray-400 ml-2">（{r.anonCode}）</span>
+                      {r.myBook && <span className="ml-2">《{r.myBook.title}》</span>}
+                    </p>
+                  </div>
+                  <span className="text-sm text-yellow-700 bg-yellow-100 px-2.5 py-0.5 rounded-full shrink-0">
+                    💡 {r.inspireCount}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 篩選工具 */}
       <div className="flex flex-wrap gap-3 mb-4">
@@ -180,15 +248,22 @@ export function Dashboard() {
                 className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden"
               >
                 <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <span className="font-medium text-primary">
                       {response.studentName}
                     </span>
+                    {/* 學生畫面上的代號，方便對照「同學C 說的那句」是誰 */}
+                    <span className="text-xs text-gray-400">{response.anonCode}</span>
                     <span
                       className={`text-xs text-white px-2 py-0.5 rounded ${stepColors[response.step] ?? 'bg-gray-400'}`}
                     >
                       {response.step}
                     </span>
+                    {response.inspireCount > 0 && (
+                      <span className="text-xs text-yellow-700 bg-yellow-100 px-2 py-0.5 rounded-full">
+                        💡 {response.inspireCount}
+                      </span>
+                    )}
                   </div>
                   <span className="text-xs text-gray-400">
                     {new Date(response.submittedAt).toLocaleTimeString('zh-TW', {
@@ -198,6 +273,19 @@ export function Dashboard() {
                   </span>
                 </div>
                 <div className="p-4">
+                  {response.myBook && (
+                    <p className="text-sm text-gray-500 font-serif mb-2">
+                      《{response.myBook.title}》
+                      {response.myBook.callNumber && (
+                        <span className="font-mono text-gray-400 ml-2">
+                          {response.myBook.callNumber}
+                        </span>
+                      )}
+                      {response.myBook.page && (
+                        <span className="text-gray-400 ml-2">讀到 p.{response.myBook.page}</span>
+                      )}
+                    </p>
+                  )}
                   <p className="text-gray-800 font-serif leading-relaxed whitespace-pre-wrap break-words">
                     {response.content}
                   </p>
