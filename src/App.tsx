@@ -13,6 +13,7 @@ import { Dashboard } from './pages/teacher/Dashboard'
 import { Join } from './pages/student/Join'
 import { Session } from './pages/student/Session'
 import { useStore } from './store/useStore'
+import { DevPreview } from './pages/DevPreview'
 
 /** 需要登入才能訪問的路由 */
 function ProtectedRoutes() {
@@ -82,6 +83,12 @@ function ProtectedRoutes() {
 }
 
 export function App() {
+  // 開發用預覽：不登入、不連 Firebase，直接看學生端三種玩法的畫面。
+  // 只在 dev 存在，正式站不會有這條路由。
+  if (import.meta.env.DEV && window.location.hash.startsWith('#/dev')) {
+    return <DevPreview />
+  }
+
   return (
     <AuthProvider>
       <HashRouter>

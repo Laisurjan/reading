@@ -1118,7 +1118,8 @@ function StepShare({
     const ok = await toggleReaction(responseId)
     if (!ok) {
       setQuotaWarning(true)
-      setTimeout(() => setQuotaWarning(false), 2500)
+      // 4 秒：2.5 秒學生常常還沒把視線移上去就消失了
+      setTimeout(() => setQuotaWarning(false), 4000)
     }
   }
 
