@@ -23,8 +23,13 @@ export function Dashboard() {
   const subscribeToSession = useStore((s) => s.subscribeToSession)
 
   const getPitchRanking = useStore((s) => s.getPitchRanking)
-  // 訂閱票數陣列，學生投票時儀表板才會即時跳動
+  const deliverLetters = useStore((s) => s.deliverLetters)
+  // 訂閱票數與回信陣列，學生動作時儀表板才會即時跳動
   useStore((s) => s.reactions)
+  const replies = useStore((s) => s.replies)
+
+  const [isDelivering, setIsDelivering] = useState(false)
+  const [deliverResult, setDeliverResult] = useState<string | null>(null)
 
   const session = id ? getSession(id) : undefined
   const sessionClass = session ? getClass(session.classId) : undefined
@@ -32,7 +37,40 @@ export function Dashboard() {
   const responses = id ? getSessionResponses(id) : []
   const activityType: ActivityType = session?.activityType ?? 'classic'
   const isPitch = activityType === 'pitch'
+  const isBottle = activityType === 'bottle'
   const ranking = id && isPitch ? getPitchRanking(id) : []
+
+  // 瓶中信的三個數字：寫好了幾封、已經投遞幾人、回信回了幾封
+  const written = responses.filter((r) => r.step === 'I').length
+  const delivered = students.filter((s) => s.assignedResponseId).length
+  const replied = replies.filter((r) => r.sessionId === id).length
+
+  const handleDeliver = async () => {
+    if (!id) return
+    setIsDelivering(true)
+    setDeliverResult(null)
+    try {
+      const { assigned, waiting } = await deliverLetters(id)
+      if (assigned === 0) {
+        setDeliverResult(
+          waiting > 0
+            ? `沒有人可以配對。還有 ${waiting} 位還沒把信寫好，等他們送出再投遞一次。`
+            : '所有人都已經拿到信了，不需要再投遞。'
+        )
+      } else {
+        setDeliverResult(
+          `已投遞 ${assigned} 封。` +
+            (waiting > 0 ? `還有 ${waiting} 位沒送出，等他們寫完再按一次投遞。` : '全班都拿到信了。')
+        )
+      }
+    } catch (e) {
+      setDeliverResult(
+        e instanceof Error ? `投遞失敗：${e.message}` : '投遞失敗，請再試一次 ｜ Delivery failed'
+      )
+    } finally {
+      setIsDelivering(false)
+    }
+  }
 
   const [selectedStep, setSelectedStep] = useState<'all' | 'I' | 'A1' | 'A2'>('all')
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null)
@@ -160,6 +198,80 @@ export function Dashboard() {
           })}
         </div>
       </div>
+
+      {/* 瓶中信：投遞控制台 */}
+      {isBottle && (
+        <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
+          <h3 className="font-medium text-gray-700 mb-4">投遞瓶中信</h3>
+
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            {[
+              { n: written, label: '已封瓶', sub: `共 ${students.length} 人` },
+              { n: delivered, label: '已投遞', sub: '拿到信的人' },
+              { n: replied, label: '已回信', sub: '寄回去的信' },
+            ].map((x) => (
+              <div key={x.label} className="rounded-lg p-3 text-center bg-gray-50">
+                <p className="text-2xl font-bold text-primary">{x.n}</p>
+                <p className="text-xs text-gray-600">{x.label}</p>
+                <p className="text-xs text-gray-400">{x.sub}</p>
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={handleDeliver}
+            disabled={isDelivering}
+            className="w-full bg-accent hover:bg-accent/90 text-white rounded-lg py-3 px-6 font-medium transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            {isDelivering ? '投遞中...' : '🌊 投遞（把瓶子漂給別人）'}
+          </button>
+
+          {deliverResult && (
+            <div className="mt-3 bg-blue-50 rounded-lg px-4 py-3 text-sm text-blue-800">
+              {deliverResult}
+            </div>
+          )}
+
+          <p className="text-xs text-gray-400 mt-3 leading-relaxed">
+            環狀配對，沒有人會拿到自己的信、也沒有人會落單。
+            只配給「已封瓶但還沒拿到信」的人，已經在回信的人不會被換掉，
+            所以晚送出的人寫完之後再按一次就好。
+          </p>
+        </div>
+      )}
+
+      {/* 瓶中信：全部回信（一對一通道沒有全班當證人，老師必須看得到每一封） */}
+      {isBottle && replied > 0 && (
+        <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
+          <h3 className="font-medium text-gray-700 mb-1">全部回信</h3>
+          <p className="text-xs text-gray-400 mb-4">
+            學生之間互相匿名，這裡顯示真名。一對一的訊息沒有旁人看得到，所以請掃過一遍。
+          </p>
+          <div className="space-y-3">
+            {replies
+              .filter((r) => r.sessionId === id)
+              .map((r) => {
+                const from = students.find((s) => s.id === r.fromStudentId)
+                const to = students.find((s) => s.id === r.toStudentId)
+                return (
+                  <div key={r.id} className="bg-gray-50 rounded-lg p-3">
+                    <div className="flex items-center gap-2 flex-wrap text-xs">
+                      <span className="font-medium text-primary">{from?.name ?? '？'}</span>
+                      <span className="text-gray-400">回給</span>
+                      <span className="font-medium text-primary">{to?.name ?? '？'}</span>
+                      <span className="text-accent bg-accent/15 px-2 py-0.5 rounded-full">
+                        {r.prompt}
+                      </span>
+                    </div>
+                    <p className="text-gray-800 font-serif leading-relaxed mt-2 whitespace-pre-wrap break-words">
+                      {r.content}
+                    </p>
+                  </div>
+                )
+              })}
+          </div>
+        </div>
+      )}
 
       {/* 賣書模式：即時票數排行（老師端顯示真名，投影前先確認要不要露出） */}
       {isPitch && (

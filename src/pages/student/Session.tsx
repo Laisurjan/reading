@@ -24,7 +24,7 @@ import type {
   MyBook,
   ActivityType,
 } from '../../types'
-import { ACTIVITY_META } from '../../types'
+import { ACTIVITY_META, BOTTLE_PROMPTS } from '../../types'
 
 export function SessionPage() {
   const { id } = useParams<{ id: string }>()
@@ -47,6 +47,9 @@ export function SessionPage() {
   // 舊任務沒有 activityType 欄位，一律當成經典模式
   const activityType: ActivityType = session?.activityType ?? 'classic'
   const isPitch = activityType === 'pitch'
+  const isBottle = activityType === 'bottle'
+  // 賣書與瓶中信都是各讀各的書，所以 R 步驟都改成「登記自己的書」
+  const isOwnBook = isPitch || isBottle
 
   // 訂閱即時更新（互看功能需要）
   useEffect(() => {
@@ -110,8 +113,9 @@ export function SessionPage() {
 
       <div className="mt-6">
         {currentStudent.currentStep === 'R' && (
-          isPitch ? (
+          isOwnBook ? (
             <StepPickBook
+              activityType={activityType}
               myBook={currentStudent.myBook}
               updateMyBook={updateMyBook}
               onComplete={() => handleStepComplete('R')}
@@ -126,7 +130,12 @@ export function SessionPage() {
           )
         )}
         {currentStudent.currentStep === 'I' && (
-          isPitch ? (
+          isBottle ? (
+            <StepWriteLetter
+              myBook={currentStudent.myBook}
+              onComplete={() => handleStepComplete('I')}
+            />
+          ) : isPitch ? (
             <StepPitch
               myBook={currentStudent.myBook}
               onComplete={() => handleStepComplete('I')}
@@ -148,6 +157,9 @@ export function SessionPage() {
           )
         )}
         {currentStudent.currentStep === 'I-share' && session.enabledSteps?.includes('I-share') && (
+          isBottle ? (
+          <StepBottleReply onComplete={() => handleStepComplete('I-share')} />
+          ) : (
           <StepShare
             step="I"
             title={isPitch ? '哪一本讓你最想去借？' : '看看同學怎麼說'}
@@ -162,6 +174,7 @@ export function SessionPage() {
             showBook={isPitch}
             onComplete={() => handleStepComplete('I-share')}
           />
+          )
         )}
         {currentStudent.currentStep === 'A1' && session.enabledSteps?.includes('A1') && (
           <StepA1
@@ -195,7 +208,9 @@ export function SessionPage() {
           />
         )}
         {showComplete && (
-          isPitch ? (
+          isBottle ? (
+            <BottleResult myResponse={getResponse('I')} onExit={handleExit} />
+          ) : isPitch ? (
             <PitchResult
               session={session}
               myResponse={getResponse('I')}
@@ -240,16 +255,19 @@ function ModeHero({ activityType }: { activityType: ActivityType }) {
   )
 }
 
-/** 賣書模式的 R 步驟：登記自己手上那本書 */
+/** 賣書／瓶中信模式的 R 步驟：登記自己手上那本書 */
 function StepPickBook({
+  activityType,
   myBook,
   updateMyBook,
   onComplete,
 }: {
+  activityType: ActivityType
   myBook?: MyBook
   updateMyBook: (book: MyBook) => Promise<void>
   onComplete: () => Promise<void> | void
 }) {
+  const isBottle = activityType === 'bottle'
   const [title, setTitle] = useState(myBook?.title ?? '')
   const [callNumber, setCallNumber] = useState(myBook?.callNumber ?? '')
   const [page, setPage] = useState(myBook?.page ?? '')
@@ -275,7 +293,7 @@ function StepPickBook({
 
   return (
     <div className="space-y-6">
-      <ModeHero activityType="pitch" />
+      <ModeHero activityType={activityType} />
 
       <div className="text-center py-2">
         <span className="inline-block bg-step-r text-white text-sm font-medium px-4 py-1.5 rounded-full">
@@ -327,8 +345,17 @@ function StepPickBook({
       </div>
 
       <div className="bg-accent/10 rounded-lg p-4 text-sm text-gray-600">
-        等一下你要用<span className="font-medium text-primary">一句話</span>把這本書推坑給全班。
-        現在先翻個幾頁，找一個你覺得別人會有興趣的點。
+        {isBottle ? (
+          <>
+            等一下你要從這本書裡<span className="font-medium text-primary">抄一段</span>
+            丟給某個同學。現在先翻個幾頁，找一段你看了有感覺的。
+          </>
+        ) : (
+          <>
+            等一下你要用<span className="font-medium text-primary">一句話</span>把這本書推坑給全班。
+            現在先翻個幾頁，找一個你覺得別人會有興趣的點。
+          </>
+        )}
       </div>
 
       <button
@@ -336,7 +363,7 @@ function StepPickBook({
         disabled={isSaving}
         className="w-full bg-step-r hover:bg-step-r/90 text-white rounded-lg py-4 px-6 font-medium transition-colors text-lg disabled:opacity-50"
       >
-        {isSaving ? '儲存中...' : '登記好了，開始寫推薦'}
+        {isSaving ? '儲存中...' : isBottle ? '登記好了，開始抄那一段' : '登記好了，開始寫推薦'}
       </button>
     </div>
   )
@@ -441,6 +468,407 @@ function StepPitch({
         className="w-full bg-step-i hover:bg-step-i/90 text-white rounded-lg py-4 px-6 font-medium transition-colors text-lg"
       >
         送出，去看大家寫了什麼
+      </button>
+    </div>
+  )
+}
+
+/** 瓶中信的 I 步驟：從自己的書裡抄一段，說說為什麼選它 */
+function StepWriteLetter({
+  myBook,
+  onComplete,
+}: {
+  myBook?: MyBook
+  onComplete: () => Promise<void> | void
+}) {
+  const submitResponse = useStore((s) => s.submitResponse)
+  const getResponse = useStore((s) => s.getResponse)
+  const saveDraft = useStore((s) => s.saveDraft)
+  const getDraft = useStore((s) => s.getDraft)
+
+  const existing = getResponse('I')
+  const [excerpt, setExcerpt] = useState(existing?.content ?? '')
+  const [page, setPage] = useState(existing?.page ?? '')
+  const [why, setWhy] = useState(existing?.why ?? '')
+
+  // 草稿存在同一個 key 裡，斷網或誤觸返回不會整段不見
+  useEffect(() => {
+    const draft = getDraft('I')
+    if (draft && !existing) {
+      try {
+        const p = JSON.parse(draft)
+        setExcerpt(p.excerpt || '')
+        setPage(p.page || '')
+        setWhy(p.why || '')
+      } catch {
+        // 舊格式草稿，忽略
+      }
+    }
+    // 只在掛載時讀一次草稿
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (excerpt || why) saveDraft('I', JSON.stringify({ excerpt, page, why }))
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [excerpt, page, why, saveDraft])
+
+  const handleSubmit = async () => {
+    if (excerpt.trim().length < 5) {
+      alert('抄一段書上的文字，一句也可以 ｜ Please copy a passage from your book')
+      return
+    }
+    if (!why.trim()) {
+      alert('寫一句為什麼選這段 ｜ Please say why you picked it')
+      return
+    }
+    await submitResponse('I', excerpt.trim(), {
+      page: page.trim() || undefined,
+      why: why.trim(),
+    })
+    await onComplete()
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="text-center py-2">
+        <span className="inline-block bg-step-i text-white text-sm font-medium px-4 py-1.5 rounded-full">
+          裝瓶
+        </span>
+        <h2 className="text-xl font-serif font-bold text-primary mt-3">
+          從你的書裡抄一段出來
+        </h2>
+        <p className="text-gray-600 mt-1">
+          等一下這段會漂到某個同學手上，他會回你一句
+        </p>
+      </div>
+
+      {myBook && (
+        <div className="bg-gray-50 rounded-lg p-4 text-center">
+          <span className="text-gray-500 text-sm">你的書：</span>
+          <span className="font-serif font-medium text-primary ml-1">《{myBook.title}》</span>
+        </div>
+      )}
+
+      <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-4 pt-4">
+          <label className="text-sm font-medium text-gray-700">
+            一、抄一段你看了有感覺的 <span className="text-red-500">*</span>
+          </label>
+          <p className="text-xs text-gray-400 mt-1">
+            照書上抄，不用改寫。一句、兩句都行——抄的時候你會再讀一次，那才是重點。
+          </p>
+        </div>
+        <textarea
+          value={excerpt}
+          onChange={(e) => setExcerpt(e.target.value)}
+          placeholder="把書上那段打上來..."
+          rows={5}
+          className="w-full px-4 py-3 outline-none resize-none font-serif text-lg leading-relaxed"
+        />
+        <div className="px-4 pb-4 flex items-center gap-2">
+          <span className="text-sm text-gray-500 shrink-0">在第</span>
+          <input
+            type="text"
+            value={page}
+            onChange={(e) => setPage(e.target.value)}
+            placeholder="58"
+            className="w-20 px-3 py-1.5 rounded border border-gray-200 focus:border-primary outline-none text-center"
+          />
+          <span className="text-sm text-gray-500">頁</span>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-4 pt-4">
+          <label className="text-sm font-medium text-gray-700">
+            二、為什麼是這一段 <span className="text-red-500">*</span>
+          </label>
+          <p className="text-xs text-gray-400 mt-1">
+            一句就好。「因為我也這樣過」「因為我看不懂但一直想」都算。
+          </p>
+        </div>
+        <textarea
+          value={why}
+          onChange={(e) => setWhy(e.target.value)}
+          placeholder="我選這段是因為..."
+          rows={3}
+          className="w-full px-4 py-3 outline-none resize-none font-serif text-lg leading-relaxed"
+        />
+      </div>
+
+      <div className="bg-blue-50 rounded-lg p-4 text-sm text-blue-800">
+        送出後老師會把大家的瓶子投遞出去。你會收到<span className="font-medium">別人的</span>，
+        別人也會收到你的。<span className="font-medium">同學看不到是誰寫的</span>（老師看得到）。
+      </div>
+
+      <button
+        onClick={handleSubmit}
+        className="w-full bg-step-i hover:bg-step-i/90 text-white rounded-lg py-4 px-6 font-medium transition-colors text-lg"
+      >
+        封瓶，丟進海裡
+      </button>
+    </div>
+  )
+}
+
+/** 瓶中信的互看步驟：撿到一個瓶子，回一句 */
+function StepBottleReply({
+  onComplete,
+}: {
+  onComplete: () => Promise<void> | void
+}) {
+  const getAssignedLetter = useStore((s) => s.getAssignedLetter)
+  const submitReply = useStore((s) => s.submitReply)
+  const getMyReply = useStore((s) => s.getMyReply)
+  // 訂閱 students／replies，老師按下投遞後畫面要自己跳出來
+  useStore((s) => s.students)
+  useStore((s) => s.replies)
+
+  const letter = getAssignedLetter()
+  const myReply = getMyReply()
+
+  const [promptKey, setPromptKey] = useState<string | null>(null)
+  const [content, setContent] = useState('')
+  const [isSending, setIsSending] = useState(false)
+
+  const chosen = BOTTLE_PROMPTS.find((p) => p.key === promptKey)
+
+  // 還沒投遞：等待畫面。這個等待是刻意的——蓋牌、翻牌，全班一起
+  if (!letter) {
+    return (
+      <div className="space-y-6">
+        <ModeHero activityType="bottle" />
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
+          <div className="text-5xl mb-4">🌊</div>
+          <h2 className="font-serif text-xl font-bold text-primary mb-2">
+            你的瓶子已經丟出去了
+          </h2>
+          <p className="text-gray-600">
+            等大家都丟完，老師會把瓶子投遞出去。
+            <br />
+            這個畫面會自己跳，不用重新整理。
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // 已經回過信了
+  if (myReply) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center py-2">
+          <span className="inline-block bg-step-a1 text-white text-sm font-medium px-4 py-1.5 rounded-full">
+            已回信
+          </span>
+          <h2 className="text-xl font-serif font-bold text-primary mt-3">你回好了</h2>
+          <p className="text-gray-600 mt-1">{letter.anonCode} 會收到這句話</p>
+        </div>
+        <div className="bg-accent/10 rounded-lg p-4 border-2 border-accent/30">
+          <p className="text-gray-800 font-serif text-lg leading-relaxed whitespace-pre-wrap break-words">
+            {myReply.content}
+          </p>
+        </div>
+        <button
+          onClick={onComplete}
+          className="w-full bg-step-a1 hover:bg-step-a1/90 text-white rounded-lg py-4 px-6 font-medium transition-colors text-lg"
+        >
+          看看有沒有人回我
+        </button>
+      </div>
+    )
+  }
+
+  const handleSend = async () => {
+    if (!chosen) {
+      alert('先選一個開頭 ｜ Please pick a starter')
+      return
+    }
+    if (content.trim().length < 2) {
+      alert('寫一句就好 ｜ Please write one line')
+      return
+    }
+    setIsSending(true)
+    try {
+      await submitReply(letter.id, letter.studentId, chosen.label, content.trim())
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="text-center py-2">
+        <span className="inline-block bg-step-a1 text-white text-sm font-medium px-4 py-1.5 rounded-full">
+          撿到瓶子
+        </span>
+        <h2 className="text-xl font-serif font-bold text-primary mt-3">
+          有一個瓶子漂到你這裡
+        </h2>
+        <p className="text-gray-600 mt-1">是 {letter.anonCode} 丟的，他不知道會漂到誰手上</p>
+      </div>
+
+      {/* 信的內容 */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-5 pt-5">
+          {letter.myBook && (
+            <p className="text-sm text-gray-500 font-serif">
+              《{letter.myBook.title}》
+              {letter.page && <span className="text-gray-400 ml-1">p.{letter.page}</span>}
+            </p>
+          )}
+          <blockquote className="mt-3 pl-4 border-l-4 border-accent/50">
+            <p className="font-serif text-xl text-gray-800 leading-relaxed whitespace-pre-wrap break-words">
+              {letter.content}
+            </p>
+          </blockquote>
+        </div>
+        {letter.why && (
+          <div className="mt-4 px-5 py-4 bg-gray-50 border-t border-gray-100">
+            <p className="text-xs text-gray-400 mb-1">他說他選這段是因為</p>
+            <p className="text-gray-700 font-serif leading-relaxed whitespace-pre-wrap break-words">
+              {letter.why}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* 回信規則：先講不要做什麼，比講要做什麼有效 */}
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+        <p className="font-medium mb-1">回信只有一條規則：不要評價。</p>
+        <p className="text-amber-700">
+          不用寫「寫得很好」，也不用寫「我看不懂」。
+          <span className="font-medium">你不是在打分數，你是在回應一個人。</span>
+          沒讀過那本書完全沒關係——你只要說這段在你身上引起了什麼。
+        </p>
+      </div>
+
+      {/* 三選一的開頭 */}
+      <div>
+        <p className="text-sm font-medium text-gray-700 mb-3">選一個開頭：</p>
+        <div className="space-y-3">
+          {BOTTLE_PROMPTS.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              onClick={() => {
+                setPromptKey(p.key)
+                if (!content.trim()) setContent(p.starter)
+              }}
+              className={`w-full p-4 rounded-lg border-2 text-left transition-all cursor-pointer ${
+                promptKey === p.key
+                  ? 'border-primary bg-primary/5'
+                  : 'border-gray-200 bg-white hover:border-gray-300'
+              }`}
+            >
+              <div className="font-serif text-lg text-gray-800">{p.label}</div>
+              <div className="text-xs text-gray-500 mt-1">{p.hint}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {chosen && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder={chosen.starter}
+            rows={4}
+            autoFocus
+            className="w-full px-4 py-4 outline-none resize-none font-serif text-lg leading-relaxed"
+          />
+          <div className="px-4 py-2 border-t border-gray-100 text-sm text-gray-400">
+            {content.length} 字．一兩句就夠了
+          </div>
+        </div>
+      )}
+
+      <button
+        onClick={handleSend}
+        disabled={!chosen || isSending}
+        className="w-full bg-step-a1 hover:bg-step-a1/90 text-white rounded-lg py-4 px-6 font-medium transition-colors text-lg disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        {isSending ? '寄出中...' : chosen ? '把回信裝進瓶子寄回去' : '先選一個開頭'}
+      </button>
+    </div>
+  )
+}
+
+/** 瓶中信的結果畫面：看看誰回了你 */
+function BottleResult({
+  myResponse,
+  onExit,
+}: {
+  myResponse: Response | undefined
+  onExit: () => void
+}) {
+  const getRepliesToMe = useStore((s) => s.getRepliesToMe)
+  useStore((s) => s.replies)
+
+  const replies = getRepliesToMe()
+
+  return (
+    <div className="space-y-6">
+      <ModeHero activityType="bottle" />
+
+      <div className="text-center py-2">
+        <h2 className="text-2xl font-serif font-bold text-primary">
+          {replies.length > 0 ? '你的瓶子有回音了' : '你的瓶子還在海上'}
+        </h2>
+      </div>
+
+      {replies.length === 0 ? (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
+          <div className="text-5xl mb-4">🍶</div>
+          <p className="text-gray-600">
+            撿到你瓶子的同學還在寫。
+            <br />
+            這個畫面會自己更新，不用重新整理。
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {replies.map((r) => (
+            <div key={r.id} className="bg-white rounded-xl shadow-sm border-2 border-accent/30 p-5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-gray-400">{r.anonCode} 回你</span>
+                <span className="text-xs text-accent bg-accent/15 px-2 py-0.5 rounded-full">
+                  {r.prompt}
+                </span>
+              </div>
+              <p className="font-serif text-xl text-gray-800 leading-relaxed mt-3 whitespace-pre-wrap break-words">
+                {r.content}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 自己丟出去的那封，放在回信下面當對照 */}
+      {myResponse && (
+        <div className="bg-gray-50 rounded-lg p-5">
+          <p className="text-xs text-gray-400 mb-2">你丟出去的那段</p>
+          <blockquote className="pl-3 border-l-2 border-gray-300">
+            <p className="font-serif text-gray-700 leading-relaxed whitespace-pre-wrap break-words">
+              {myResponse.content}
+            </p>
+          </blockquote>
+        </div>
+      )}
+
+      <div className="bg-accent/10 rounded-lg p-4 text-sm text-gray-600">
+        剛剛抄的那段可以直接謄到紙本學習單的第二格，別忘了寫頁碼。
+      </div>
+
+      <button
+        onClick={onExit}
+        className="w-full bg-primary hover:bg-primary/90 text-white rounded-lg py-3 px-6 font-medium transition-colors"
+      >
+        返回首頁
       </button>
     </div>
   )

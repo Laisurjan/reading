@@ -26,8 +26,15 @@ import type {
   Reaction,
   MyBook,
   ShareStep,
+  Reply,
 } from '../types'
-import { generateId, generateJoinCode, buildAnonMap } from '../utils/helpers'
+import {
+  generateId,
+  generateJoinCode,
+  buildAnonMap,
+  stripUndefined,
+  buildDeliveryPlan,
+} from '../utils/helpers'
 
 interface Store {
   /** 所有班級 */
@@ -42,6 +49,8 @@ interface Store {
   responses: Response[]
   /** 所有 💡（當前任務的） */
   reactions: Reaction[]
+  /** 所有瓶中信回信（當前任務的） */
+  replies: Reply[]
   /** 載入狀態 */
   loading: boolean
 
@@ -71,8 +80,21 @@ interface Store {
   submitResponse: (step: 'I' | 'A1' | 'A2', content: string, extra?: Partial<Response>) => Promise<void>
   /** 取得學生在某步驟的回答 */
   getResponse: (step: 'I' | 'A1' | 'A2') => Response | undefined
-  /** 更新自己帶來的那本書（賣書模式） */
+  /** 更新自己帶來的那本書（賣書／瓶中信模式） */
   updateMyBook: (book: MyBook) => Promise<void>
+  /**
+   * 瓶中信：老師按「投遞」。對「已送出信、但還沒分到信」的人做環狀配對。
+   * 回傳：{ assigned: 這次配到幾人, waiting: 還沒送出信的人數 }
+   */
+  deliverLetters: (sessionId: string) => Promise<{ assigned: number; waiting: number }>
+  /** 瓶中信：取得分配給我要回覆的那封信 */
+  getAssignedLetter: () => (Response & { anonCode: string; myBook?: MyBook }) | undefined
+  /** 瓶中信：送出回信 */
+  submitReply: (toResponseId: string, toStudentId: string, prompt: string, content: string) => Promise<void>
+  /** 瓶中信：我寫的回信 */
+  getMyReply: () => Reply | undefined
+  /** 瓶中信：回給我的信（附匿名代號） */
+  getRepliesToMe: () => Array<Reply & { anonCode: string }>
   /** 切換 💡（已投過就收回）。超過票數上限時回傳 false 不寫入 */
   toggleReaction: (responseId: string) => Promise<boolean>
   /** 某則回答收到幾顆 💡 */
@@ -120,6 +142,7 @@ export const useStore = create<Store>()((set, get) => ({
   currentStudent: null,
   responses: [],
   reactions: [],
+  replies: [],
   loading: true,
 
   init: async () => {
@@ -210,11 +233,17 @@ export const useStore = create<Store>()((set, get) => ({
     for (const reactionDoc of reactionsSnap.docs) {
       await deleteDoc(reactionDoc.ref)
     }
+    const repliesQuery = query(collection(db, 'replies'), where('sessionId', '==', id))
+    const repliesSnap = await getDocs(repliesQuery)
+    for (const replyDoc of repliesSnap.docs) {
+      await deleteDoc(replyDoc.ref)
+    }
     set((state) => ({
       sessions: state.sessions.filter((s) => s.id !== id),
       students: state.students.filter((s) => s.sessionId !== id),
       responses: state.responses.filter((r) => r.sessionId !== id),
       reactions: state.reactions.filter((r) => r.sessionId !== id),
+      replies: state.replies.filter((r) => r.sessionId !== id),
     }))
   },
 
@@ -273,7 +302,14 @@ export const useStore = create<Store>()((set, get) => ({
       query(collection(db, 'students'), where('sessionId', '==', sessionId)),
       (snap) => {
         const students = snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as Student))
-        set({ students })
+        set((state) => {
+          // currentStudent 也要一起更新，否則老師在自己的裝置上按「投遞」之後，
+          // 學生那邊的 assignedResponseId 永遠不會出現，畫面會卡在等待中。
+          const mine = state.currentStudent
+            ? students.find((s) => s.id === state.currentStudent!.id)
+            : undefined
+          return { students, currentStudent: mine ?? state.currentStudent }
+        })
       }
     )
 
@@ -295,11 +331,21 @@ export const useStore = create<Store>()((set, get) => ({
       }
     )
 
+    // 訂閱回信（「有一封信回來了」要當場看得到，這是瓶中信整個模式的價值所在）
+    const repliesUnsub = onSnapshot(
+      query(collection(db, 'replies'), where('sessionId', '==', sessionId)),
+      (snap) => {
+        const replies = snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as Reply))
+        set({ replies })
+      }
+    )
+
     // 回傳取消訂閱函式
     return () => {
       studentsUnsub()
       responsesUnsub()
       reactionsUnsub()
+      repliesUnsub()
     }
   },
 
@@ -321,7 +367,8 @@ export const useStore = create<Store>()((set, get) => ({
     const student = get().currentStudent
     if (!student) return
 
-    const response: Omit<Response, 'id'> = {
+    // 選填欄位（瓶中信的 page、why）沒填時是 undefined，Firestore 會整筆拒收
+    const response: Omit<Response, 'id'> = stripUndefined({
       studentId: student.id,
       sessionId: student.sessionId,
       textId: student.chosenTextId ?? '',
@@ -329,7 +376,7 @@ export const useStore = create<Store>()((set, get) => ({
       content,
       submittedAt: new Date().toISOString(),
       ...extra,
-    }
+    })
     const docRef = await addDoc(collection(db, 'responses'), response)
     const responseWithId = { ...response, id: docRef.id } as Response
     set((state) => ({ responses: [...state.responses, responseWithId] }))
@@ -350,12 +397,115 @@ export const useStore = create<Store>()((set, get) => ({
     const student = get().currentStudent
     if (!student) return
 
-    await updateDoc(doc(db, 'students', student.id), { myBook: book })
-    const updatedStudent = { ...student, myBook: book }
+    // 索書號與頁數是選填，沒填時要濾掉 undefined 才寫得進 Firestore
+    const clean = stripUndefined(book)
+    await updateDoc(doc(db, 'students', student.id), { myBook: clean })
+    const updatedStudent = { ...student, myBook: clean }
     set((state) => ({
       currentStudent: updatedStudent,
       students: state.students.map((s) => (s.id === student.id ? updatedStudent : s)),
     }))
+  },
+
+  deliverLetters: async (sessionId) => {
+    const students = get().students.filter((s) => s.sessionId === sessionId)
+    const responses = get().responses.filter((r) => r.sessionId === sessionId && r.step === 'I')
+
+    /** 這位學生有沒有把信寫好 */
+    const letterOf = (studentId: string) => responses.find((r) => r.studentId === studentId)
+
+    // 只處理「信已送出、但還沒分到別人的信」的人。
+    // 已經分到的人不重算，否則正在回信的人會被換掉手上那封。
+    const pending = students
+      .filter((s) => letterOf(s.id) && !s.assignedResponseId)
+      .sort((a, b) => a.id.localeCompare(b.id))
+
+    const waiting = students.filter((s) => !letterOf(s.id)).length
+
+    if (pending.length === 0) {
+      return { assigned: 0, waiting }
+    }
+
+    // 配對邏輯是純函式（helpers.buildDeliveryPlan），另有測試涵蓋
+    const letterIdOf = new Map(
+      pending.map((s) => [s.id, letterOf(s.id)!.id] as [string, string])
+    )
+    const plan = buildDeliveryPlan(
+      pending.map((s) => s.id),
+      letterIdOf,
+      responses.map((r) => ({ id: r.id, studentId: r.studentId }))
+    )
+
+    for (const w of plan) {
+      await updateDoc(doc(db, 'students', w.studentId), { assignedResponseId: w.responseId })
+    }
+
+    const assignedIds = new Map(plan.map((w) => [w.studentId, w.responseId]))
+    set((state) => ({
+      students: state.students.map((s) =>
+        assignedIds.has(s.id) ? { ...s, assignedResponseId: assignedIds.get(s.id) } : s
+      ),
+      currentStudent:
+        state.currentStudent && assignedIds.has(state.currentStudent.id)
+          ? { ...state.currentStudent, assignedResponseId: assignedIds.get(state.currentStudent.id) }
+          : state.currentStudent,
+    }))
+
+    return { assigned: plan.length, waiting }
+  },
+
+  getAssignedLetter: () => {
+    const student = get().currentStudent
+    if (!student?.assignedResponseId) return undefined
+
+    const letter = get().responses.find((r) => r.id === student.assignedResponseId)
+    if (!letter) return undefined
+
+    const students = get().students.filter((s) => s.sessionId === student.sessionId)
+    const anonMap = buildAnonMap(students.map((s) => s.id))
+    const writer = students.find((s) => s.id === letter.studentId)
+
+    return {
+      ...letter,
+      anonCode: anonMap.get(letter.studentId) ?? '同學',
+      myBook: writer?.myBook,
+    }
+  },
+
+  submitReply: async (toResponseId, toStudentId, prompt, content) => {
+    const student = get().currentStudent
+    if (!student) return
+
+    const reply: Omit<Reply, 'id'> = {
+      sessionId: student.sessionId,
+      toResponseId,
+      toStudentId,
+      fromStudentId: student.id,
+      prompt,
+      content,
+      createdAt: new Date().toISOString(),
+    }
+    const docRef = await addDoc(collection(db, 'replies'), reply)
+    set((state) => ({ replies: [...state.replies, { ...reply, id: docRef.id }] }))
+    localStorage.removeItem(`${DRAFT_KEY_PREFIX}${student.id}_reply`)
+  },
+
+  getMyReply: () => {
+    const student = get().currentStudent
+    if (!student) return undefined
+    return get().replies.find((r) => r.fromStudentId === student.id)
+  },
+
+  getRepliesToMe: () => {
+    const student = get().currentStudent
+    if (!student) return []
+
+    const students = get().students.filter((s) => s.sessionId === student.sessionId)
+    const anonMap = buildAnonMap(students.map((s) => s.id))
+
+    return get()
+      .replies.filter((r) => r.toStudentId === student.id)
+      .map((r) => ({ ...r, anonCode: anonMap.get(r.fromStudentId) ?? '同學' }))
   },
 
   toggleReaction: async (responseId) => {

@@ -25,8 +25,8 @@ const ALL_STEPS: { key: Step; color: string }[] = [
 ]
 
 export function ProgressBar({ currentStep, enabledSteps, activityType = 'classic' }: ProgressBarProps) {
-  // 賣書模式的最後一格是「結果」，即使 A2 沒啟用也要顯示
-  const showFinalAsResult = activityType === 'pitch'
+  // 賣書的「結果」與瓶中信的「看回音」是最後一格，即使 A2 沒啟用也要顯示
+  const showFinalAsResult = activityType === 'pitch' || activityType === 'bottle'
 
   const steps = ALL_STEPS.filter((s) => {
     if (s.key === 'R' || s.key === 'I') return true

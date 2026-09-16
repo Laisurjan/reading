@@ -13,9 +13,9 @@ export type SessionMode = 'single' | 'multi'
  * SessionMode 管「文本從哪來」，ActivityType 管「這節課怎麼玩」。
  * - classic：經典 RIA（全班同一份拆頁，R→I→互看→A1→互看→A2）
  * - pitch：賣書（各讀各的書，寫一句推薦詞，匿名投票選出前三）
- * 未來的 bottle（瓶中信）會加在這裡。
+ * - bottle：瓶中信（各讀各的書，摘抄一段，環狀配對後互相回一句）
  */
-export type ActivityType = 'classic' | 'pitch'
+export type ActivityType = 'classic' | 'pitch' | 'bottle'
 
 /**
  * 互看時的署名方式。
@@ -121,9 +121,61 @@ export interface Student {
   chosenTextId?: string
   currentStep: Step
   joinedAt: string
-  /** 賣書模式：學生自己挑的那本書 */
+  /** 賣書／瓶中信模式：學生自己挑的那本書 */
   myBook?: MyBook
+  /**
+   * 瓶中信模式：老師按「投遞」後，分配給這位學生要回覆的那封信（Response id）。
+   * 由環狀配對產生，永遠不會分到自己的信。
+   */
+  assignedResponseId?: string
 }
+
+/**
+ * 瓶中信的回信。
+ * 一對一通道比公開牆危險（公開牆有全班當證人），所以老師端看得到每一封，
+ * 而且這件事要先跟學生說。
+ */
+export interface Reply {
+  id: string
+  sessionId: string
+  /** 回覆的是哪一封信 */
+  toResponseId: string
+  /** 那封信的作者，用來快速查「回給我的信」 */
+  toStudentId: string
+  fromStudentId: string
+  /** 回信者選用的引導語 */
+  prompt: string
+  content: string
+  createdAt: string
+}
+
+/**
+ * 瓶中信回信的三個引導語。
+ *
+ * 設計重點：回信不是評論那段文字，是回應那個人。
+ * 三句話都把焦點從「這段寫得如何」移到「這段在我身上引起什麼」——
+ * 這也是唯一一種「沒讀過那本書也寫得出來」的回應。
+ */
+export const BOTTLE_PROMPTS: { key: string; label: string; starter: string; hint: string }[] = [
+  {
+    key: 'remind',
+    label: '這段讓我想到⋯⋯',
+    starter: '這段讓我想到',
+    hint: '想到自己的事、看過的影片、認識的人都可以',
+  },
+  {
+    key: 'words',
+    label: '我最有感的是「⋯⋯」這幾個字',
+    starter: '我最有感的是「',
+    hint: '把那幾個字挑出來，再說為什麼',
+  },
+  {
+    key: 'ask',
+    label: '看完我想問你：⋯⋯',
+    starter: '看完我想問你：',
+    hint: '問一個你真的好奇的問題',
+  },
+]
 
 /** 一則「💡 有啟發」。每位學生對同一則回答最多一票 */
 export interface Reaction {
@@ -146,6 +198,10 @@ export interface Response {
   a2Action?: string
   a2Connection?: string
   a2Deadline?: string
+  /** 瓶中信：摘抄的那段在第幾頁 */
+  page?: string
+  /** 瓶中信：為什麼選這一段 */
+  why?: string
   submittedAt: string
 }
 
@@ -205,10 +261,11 @@ export const ACTIVITY_META: Record<
     name: '瓶中信模式',
     studentName: '把想說的話裝進瓶子裡',
     tagline: '寫給一個不知道是誰的人',
-    description: '每人寫一段，系統配對後漂給另一個人，收到的人回一句。保證每個人都收得到回信。',
+    description:
+      '每人從自己的書裡抄一段、說說為什麼選它。老師按「投遞」後環狀配對漂給另一個人，收到的人回一句。保證每個人都收得到回信。',
     image: 'modes/bottle.jpg',
     card: 'modes/bottle-card.jpg',
-    available: false,
+    available: true,
   },
 }
 

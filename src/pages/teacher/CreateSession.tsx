@@ -66,9 +66,12 @@ export function CreateSession() {
 
   const currentClass = getClass(classId)
 
-  /** 這節課怎麼玩。賣書模式會自動套用它該有的設定，老師不必自己勾 */
+  /** 這節課怎麼玩。賣書與瓶中信會自動套用它們該有的設定，老師不必自己勾 */
   const [activityType, setActivityType] = useState<ActivityType>('classic')
   const isPitch = activityType === 'pitch'
+  const isBottle = activityType === 'bottle'
+  /** 這兩個玩法都是各讀各的書，老師不用貼文本、不用設步驟 */
+  const isOwnBook = isPitch || isBottle
 
   const [isPaperMode, setIsPaperMode] = useState(false)
   const [title, setTitle] = useState('')
@@ -141,26 +144,28 @@ export function CreateSession() {
     e?.preventDefault()
     setSubmitError(null)
 
-    // 賣書模式各讀各的書，老師不用貼文本，只需要任務名稱
+    // 賣書與瓶中信各讀各的書，老師不用貼文本，只需要任務名稱
     if (!title.trim()) {
       alert('請填寫任務名稱 ｜ Please fill in the session title')
       return
     }
-    if (!isPitch && !textTitle.trim()) {
+    if (!isOwnBook && !textTitle.trim()) {
       alert('請填寫必要欄位 ｜ Please fill in required fields')
       return
     }
 
     // 線上模式需要文本內容
-    if (!isPitch && !isPaperMode && !textContent.trim()) {
+    if (!isOwnBook && !isPaperMode && !textContent.trim()) {
       alert('請填寫文本內容 ｜ Please fill in text content')
       return
     }
 
     // 組合啟用的步驟
-    // 賣書模式的流程固定是 選書 → 寫推薦 → 投票 → 結果，不開放 A1／A2
+    // 賣書：選書 → 寫推薦 → 投票 → 結果
+    // 瓶中信：選書 → 裝瓶 → 回信 → 看回音
+    // 兩者流程都固定，不開放 A1／A2
     const enabledSteps: OptionalStep[] = []
-    if (isPitch) {
+    if (isOwnBook) {
       enabledSteps.push('I-share')
     } else {
       if (enableIShare) enabledSteps.push('I-share')
@@ -170,9 +175,10 @@ export function CreateSession() {
     }
 
     // 署名方式與票數上限
-    const attribution: Partial<Record<ShareStep, Attribution>> = isPitch
+    const attribution: Partial<Record<ShareStep, Attribution>> = isOwnBook
       ? { 'I-share': 'anon' }
       : { 'I-share': attrIShare, 'A1-share': attrA1Share }
+    // 只有賣書模式在投票，瓶中信沒有 💡
     const reactionQuota = isPitch ? 3 : undefined
 
     // 組合書籍資訊（只有有填寫的欄位才加入）
@@ -193,17 +199,17 @@ export function CreateSession() {
         title: title.trim(),
         mode: 'single',
         activityType,
-        // 賣書模式一定是紙本：學生讀的是自己手上那本實體書
-        isPaperMode: isPitch ? true : isPaperMode,
+        // 這兩個玩法一定是紙本：學生讀的是自己手上那本實體書
+        isPaperMode: isOwnBook ? true : isPaperMode,
         enabledSteps,
         attribution,
         reactionQuota,
         texts: [
           {
-            title: isPitch ? '各自帶來的書' : textTitle.trim(),
-            author: isPitch ? '—' : textAuthor.trim() || '佚名',
-            source: isPitch ? '—' : textSource.trim() || '未註明出處',
-            content: isPitch || isPaperMode ? '（紙本閱讀）' : textContent.trim(),
+            title: isOwnBook ? '各自帶來的書' : textTitle.trim(),
+            author: isOwnBook ? '—' : textAuthor.trim() || '佚名',
+            source: isOwnBook ? '—' : textSource.trim() || '未註明出處',
+            content: isOwnBook || isPaperMode ? '（紙本閱讀）' : textContent.trim(),
           },
         ],
         grouping: 'none',
@@ -347,8 +353,35 @@ export function CreateSession() {
           </div>
         )}
 
+        {/* 瓶中信：課堂節奏與安全前提都要先講清楚 */}
+        {isBottle && (
+          <div className="space-y-3">
+            <div className="bg-blue-50 rounded-lg p-4 text-sm text-blue-800 space-y-1.5">
+              <p className="font-medium">瓶中信模式會自動套用這些設定：</p>
+              <ul className="text-blue-700 space-y-1">
+                <li>• 學生讀的是自己手上的實體書，老師不用貼文本</li>
+                <li>• 學生寫：從書裡抄一段（附頁碼）＋ 一句為什麼選它</li>
+                <li>• 回信的人從三個開頭裡選一個，只需要寫一兩句</li>
+                <li>• 全程匿名（同學之間），環狀配對保證沒有人落單</li>
+              </ul>
+              <p className="text-blue-600 pt-1">
+                流程需要你按一次按鈕：等大家封瓶後，到儀表板按
+                <span className="font-medium">「🌊 投遞」</span>，瓶子才會漂出去。
+              </p>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+              <p className="font-medium mb-1">開這個模式之前請先確認一件事</p>
+              <p className="text-amber-700">
+                回信是<span className="font-medium">一對一</span>的，沒有全班當證人。
+                儀表板會列出每一封回信與真名，<span className="font-medium">請掃過一遍</span>；
+                也要先跟學生講「老師看得到每一封」——這是這個模式能在班上開的前提。
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* 閱讀模式選擇（賣書模式固定紙本，不需要選） */}
-        <div className={isPitch ? 'hidden' : ''}>
+        <div className={isOwnBook ? 'hidden' : ''}>
           <label className="block text-sm font-medium text-gray-700 mb-3">
             閱讀模式
           </label>
@@ -400,10 +433,10 @@ export function CreateSession() {
           />
         </div>
 
-        <hr className={`border-gray-100 ${isPitch ? 'hidden' : ''}`} />
+        <hr className={`border-gray-100 ${isOwnBook ? 'hidden' : ''}`} />
 
         {/* 文本資訊（賣書模式每人一本不同的書，由學生自己登記） */}
-        <div className={`space-y-4 ${isPitch ? 'hidden' : ''}`}>
+        <div className={`space-y-4 ${isOwnBook ? 'hidden' : ''}`}>
           <h3 className="text-lg font-medium text-primary">文本資訊</h3>
 
           <div>
@@ -476,10 +509,10 @@ export function CreateSession() {
           )}
         </div>
 
-        <hr className={`border-gray-100 ${isPitch ? 'hidden' : ''}`} />
+        <hr className={`border-gray-100 ${isOwnBook ? 'hidden' : ''}`} />
 
         {/* 書籍資訊（選填）。賣書模式每人一本，書名由學生在「選書」步驟自己填 */}
-        <div className={`space-y-4 ${isPitch ? 'hidden' : ''}`}>
+        <div className={`space-y-4 ${isOwnBook ? 'hidden' : ''}`}>
           <h3 className="text-lg font-medium text-primary">
             書籍資訊
             <span className="text-sm text-gray-400 font-normal ml-2">（選填，讓學生可借閱或購買）</span>
@@ -569,10 +602,10 @@ export function CreateSession() {
           </div>
         </div>
 
-        <hr className={`border-gray-100 ${isPitch ? 'hidden' : ''}`} />
+        <hr className={`border-gray-100 ${isOwnBook ? 'hidden' : ''}`} />
 
         {/* 步驟設定（賣書模式流程固定，不開放調整） */}
-        <div className={`space-y-4 ${isPitch ? 'hidden' : ''}`}>
+        <div className={`space-y-4 ${isOwnBook ? 'hidden' : ''}`}>
           <h3 className="text-lg font-medium text-primary">練習步驟設定</h3>
           <p className="text-sm text-gray-500">
             R（閱讀）和 I（重述）為必要步驟，以下步驟可依課堂需求自由選擇
@@ -643,7 +676,7 @@ export function CreateSession() {
         </div>
 
         {/* 互看署名方式 */}
-        <div className={`space-y-4 ${isPitch ? 'hidden' : ''}`}>
+        <div className={`space-y-4 ${isOwnBook ? 'hidden' : ''}`}>
           <hr className="border-gray-100" />
           <h3 className="text-lg font-medium text-primary">互看時要不要掛名</h3>
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
