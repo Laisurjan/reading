@@ -134,6 +134,42 @@ if (!isAllowedEmail(result.user.email)) {
 }
 ```
 
+---
+
+## 資料安全（2026-09-16 起）
+
+**權限的唯一來源是 `firestore.rules`，不是前端。** `src/lib/firebase.ts` 的
+`isAllowedEmail()`、`isTeacher()` 與 `App.tsx` 的 role 判斷都只是介面——
+`firebaseConfig` 打包在網頁裡是公開的，任何人都能繞過畫面直接打 API。
+新增任何集合或寫入路徑時，**先問「規則擋得住嗎」**，再寫前端。
+
+```bash
+firebase deploy --only firestore:rules      # 專案已寫在 .firebaserc
+firebase deploy --only firestore:rules --dry-run   # 只檢查語法，不套用
+```
+
+規則改壞了可在 Console → Firestore → 規則 → 版本紀錄一鍵回滾。
+
+### 身分是 uid，不是姓名
+
+`Student.uid` 存 Google 帳號的 uid，是這筆紀錄的主人：規則靠它判斷「這筆能不能改」，
+`joinSession()` 也靠它把人接回原本的紀錄。**不要再用姓名字串比對身分**——
+座號填 `5` 和 `05` 會變成兩個人，經典模式的進度被拆散，老師儀表板上多一個
+永遠停在閱讀的幽靈。`name` 只是顯示用，重新加入時會更新成最新寫法。
+
+改版前建立的學生文件沒有 uid，規則會擋下它們的更新；那些人重新加入會建立新紀錄。
+所以**規則與前端要在同一節課之間一起上**，不要在課中途部署。
+
+### 匿名是「畫面上不顯示」，不是「查不到」
+
+互看與投票要即時，學生端會訂閱整個任務的 `students`／`responses`／`replies`，
+**姓名就在每個學生自己的瀏覽器裡**，開發者工具看得到。所以：
+
+- 對學生只能說「畫面上不會出現名字，老師看得到」，**不要說「完全匿名」**
+- 瓶中信要多講一句「寫你願意讓老師讀到的內容」
+- 要做到真的查不到，得把姓名移出學生讀得到的集合（`responses` 只留 anonId，
+  姓名收進只有老師與本人可讀的文件）——那是資料結構改動，還沒做
+
 ### Firebase Firestore 免費方案
 
 - 儲存空間：1 GB
@@ -151,3 +187,4 @@ if (!isAllowedEmail(result.user.email)) {
 | v1.1 | 2026-02-26 | 新增：命名與中文註解規範、中英雙語錯誤處理、版次紀錄 |
 | v1.2 | 2026-02-26 | 新增：版本控制規範，每次改版前須先 git commit |
 | v1.3 | 2026-02-27 | 新增：部署踩坑筆記（GitHub Pages、Firebase Auth、Google OAuth） |
+| v1.4 | 2026-09-16 | 新增：資料安全章節（firestore.rules 為權限唯一來源、uid 身分、匿名的界線） |

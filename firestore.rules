@@ -1,0 +1,99 @@
+rules_version = '2';
+
+/**
+ * 深度共讀平台 — Firestore 安全規則
+ *
+ * 權限只在這裡定義。前端的 isAllowedEmail()、role 判斷都只是介面，
+ * 任何人拿著打包進網頁的 firebaseConfig 就能直接打 API，擋得住的只有這份規則。
+ *
+ * 三條底線：
+ *   1. 沒登入、不是本校帳號 → 什麼都讀不到。
+ *   2. 班級與任務只有老師能建立、修改、刪除。
+ *   3. 學生只能寫掛在自己 uid 底下的資料，改不動別人的。
+ */
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /** 老師帳號。與 src/lib/firebase.ts 的 TEACHER_EMAIL 相同，換老師要兩邊一起改。 */
+    function teacherEmail() {
+      return 'walala@hlbh.hlc.edu.tw';
+    }
+
+    /** 已登入且是本校帳號（教職員或學生網域）。回傳：bool */
+    function schoolUser() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && (
+          request.auth.token.email.matches('^[^@]+@hlbh[.]hlc[.]edu[.]tw$')
+          || request.auth.token.email.matches('^[^@]+@stu[.]hlbh[.]hlc[.]edu[.]tw$')
+        );
+    }
+
+    /** 是不是老師本人。回傳：bool */
+    function isTeacher() {
+      return schoolUser() && request.auth.token.email == teacherEmail();
+    }
+
+    /** 這筆 students 文件是不是登入者本人的。回傳：bool */
+    function ownsStudent(studentId) {
+      return schoolUser()
+        && exists(/databases/$(database)/documents/students/$(studentId))
+        && get(/databases/$(database)/documents/students/$(studentId)).data.uid == request.auth.uid;
+    }
+
+    match /classes/{classId} {
+      allow read: if schoolUser();
+      allow write: if isTeacher();
+    }
+
+    match /sessions/{sessionId} {
+      allow read: if schoolUser();
+      allow write: if isTeacher();
+    }
+
+    /**
+     * 學生名單。新文件一定要帶自己的 uid；之後只有本人（改步驟、登記書本）
+     * 與老師（瓶中信投遞要寫 assignedResponseId）能改，而且 uid 不得被改掉。
+     */
+    match /students/{studentId} {
+      allow read: if schoolUser();
+      allow create: if schoolUser() && request.resource.data.uid == request.auth.uid;
+      allow update: if isTeacher()
+        || (
+          schoolUser()
+          && resource.data.uid == request.auth.uid
+          && request.resource.data.uid == resource.data.uid
+        );
+      allow delete: if isTeacher();
+    }
+
+    /** 回答送出後不再修改；要重來是老師刪掉整個任務。 */
+    match /responses/{responseId} {
+      allow read: if schoolUser();
+      allow create: if ownsStudent(request.resource.data.studentId);
+      allow update: if false;
+      allow delete: if isTeacher();
+    }
+
+    /** 💡 投票：自己投的自己可以收回。 */
+    match /reactions/{reactionId} {
+      allow read: if schoolUser();
+      allow create: if ownsStudent(request.resource.data.fromStudentId);
+      allow update: if false;
+      allow delete: if isTeacher() || ownsStudent(resource.data.fromStudentId);
+    }
+
+    /** 瓶中信回信：寄出就不能改，也不能自己刪掉。 */
+    match /replies/{replyId} {
+      allow read: if schoolUser();
+      allow create: if ownsStudent(request.resource.data.fromStudentId);
+      allow update: if false;
+      allow delete: if isTeacher();
+    }
+
+    /** 其餘路徑一律拒絕。 */
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -35,12 +35,19 @@ export function Join() {
       return
     }
 
+    // 尚未登入就沒有 uid，不能建立紀錄（正常流程不會走到這裡，路由已擋）
+    if (!user) {
+      setError('登入狀態已失效，請重新登入 ｜ Not signed in')
+      setIsLoading(false)
+      return
+    }
+
     // 組合完整姓名
     const fullName = trimmedSeat ? `${trimmedSeat}${displayName}` : displayName
 
     try {
-      // 加入任務（會自動檢查是否存在）
-      const student = await joinSession(trimmedCode, fullName)
+      // 加入任務（以 uid 認人，同一個人重新加入會接回原本那筆）
+      const student = await joinSession(trimmedCode, fullName, user.uid)
       if (!student) {
         setError('找不到此任務，請確認代碼是否正確 ｜ Session not found')
         setIsLoading(false)

@@ -70,8 +70,11 @@ interface Store {
   getSession: (id: string) => Session | undefined
   /** 取得任務（透過加入代碼） */
   getSessionByCode: (code: string) => Promise<Session | null>
-  /** 學生加入任務 */
-  joinSession: (code: string, name: string) => Promise<Student | null>
+  /**
+   * 學生加入任務。以 Google 帳號的 uid 認人，不再用姓名字串比對——
+   * 同一個人第一次沒填座號、第二次補上，也只會有一筆紀錄。
+   */
+  joinSession: (code: string, name: string, uid: string) => Promise<Student | null>
   /** 訂閱任務資料（即時更新） */
   subscribeToSession: (sessionId: string) => Unsubscribe
   /** 更新學生步驟 */
@@ -259,15 +262,15 @@ export const useStore = create<Store>()((set, get) => ({
     return { ...docSnap.data(), id: docSnap.id } as Session
   },
 
-  joinSession: async (code, name) => {
+  joinSession: async (code, name, uid) => {
     const session = await get().getSessionByCode(code)
     if (!session) return null
 
-    // 檢查是否已有同名學生
+    // 以 uid 找回自己那筆：重新整理、手機切走再切回來、座號寫法不一樣，都接得回來
     const q = query(
       collection(db, 'students'),
       where('sessionId', '==', session.id),
-      where('name', '==', name)
+      where('uid', '==', uid)
     )
     const snap = await getDocs(q)
 
@@ -275,6 +278,11 @@ export const useStore = create<Store>()((set, get) => ({
       // 恢復既有學生
       const docSnap = snap.docs[0]!
       const existingStudent = { ...docSnap.data(), id: docSnap.id } as Student
+      // 補填或改寫座號時，讓老師端看到最新的顯示名稱
+      if (existingStudent.name !== name) {
+        await updateDoc(docSnap.ref, { name })
+        existingStudent.name = name
+      }
       set({ currentStudent: existingStudent })
       return existingStudent
     }
@@ -282,6 +290,7 @@ export const useStore = create<Store>()((set, get) => ({
     // 建立新學生
     const student: Omit<Student, 'id'> = {
       sessionId: session.id,
+      uid,
       name,
       chosenTextId: session.texts[0]?.id,
       currentStep: 'R',

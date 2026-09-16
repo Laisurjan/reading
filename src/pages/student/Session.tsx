@@ -459,8 +459,8 @@ function StepPitch({
       </div>
 
       <div className="bg-blue-50 rounded-lg p-4 text-sm text-blue-800">
-        送出後會跟全班的推薦一起出現在牆上，<span className="font-medium">同學看不到是誰寫的</span>
-        （老師看得到）。
+        送出後會跟全班的推薦一起出現在牆上，<span className="font-medium">牆上不會顯示名字</span>
+        （老師看得到是誰寫的）。
       </div>
 
       <button
@@ -601,7 +601,8 @@ function StepWriteLetter({
 
       <div className="bg-blue-50 rounded-lg p-4 text-sm text-blue-800">
         送出後老師會把大家的瓶子投遞出去。你會收到<span className="font-medium">別人的</span>，
-        別人也會收到你的。<span className="font-medium">同學看不到是誰寫的</span>（老師看得到）。
+        別人也會收到你的。收到的人<span className="font-medium">看不到你的名字</span>，
+        老師每一封都看得到——寫你願意讓老師讀到的內容就好。
       </div>
 
       <button

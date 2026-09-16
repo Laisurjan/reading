@@ -22,8 +22,13 @@ export type ActivityType = 'classic' | 'pitch' | 'bottle'
  * - real：顯示座號＋姓名（舊任務沒有此設定時的預設值）
  * - anon：顯示匿名代號（同學A、同學B…）
  *
- * 注意：這只影響「學生看到的畫面」。回答一定掛 studentId 才存得進資料庫，
- * 所以老師端一律看得到真名——對學生說明時要說「同學看不到是誰，老師看得到」。
+ * ⚠ 這只換掉「畫面上顯示的字」，不是真的匿名。學生端為了互看與投票，
+ * 會訂閱整個任務的 students／responses／replies，姓名其實就躺在每個學生自己的
+ * 瀏覽器裡，打開開發者工具就對得回去（這是資處科，真的有人會打開）。
+ *
+ * 所以對學生只能說「畫面上不會出現名字，老師看得到」，不能說「沒有人知道是誰」。
+ * 瓶中信尤其要先講清楚，請他們寫願意被老師讀到的內容。
+ * 要做到查也查不到，得把姓名移出學生讀得到的集合，那是資料結構的改動。
  */
 export type Attribution = 'anon' | 'real'
 
@@ -114,6 +119,14 @@ export interface MyBook {
 export interface Student {
   id: string
   sessionId: string
+  /**
+   * Google 帳號的 uid，等於這筆紀錄的主人。
+   * 這是唯一的身分依據：安全規則靠它判斷「這筆能不能改」，
+   * 重新加入時也靠它把人接回原本的紀錄，不再拿姓名字串比對。
+   * 選填只是為了讀得動改版前留下的舊資料，新資料一定會有。
+   */
+  uid?: string
+  /** 顯示名稱（座號＋Google 顯示名稱）。只是拿來顯示，不做身分比對 */
   name: string
   /** Google 帳號 email（未來認證用） */
   email?: string

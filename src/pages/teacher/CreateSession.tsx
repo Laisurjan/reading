@@ -348,7 +348,7 @@ export function CreateSession() {
               <li>• 只顯示前三名，不公布完整名次、不顯示 0 票的人</li>
             </ul>
             <p className="text-blue-600 pt-1">
-              記得口頭講一次：<span className="font-medium">同學看不到是誰寫的，但老師看得到。</span>
+              記得口頭講一次：<span className="font-medium">牆上不會出現名字，但老師看得到是誰寫的。</span>
             </p>
           </div>
         )}
@@ -362,7 +362,7 @@ export function CreateSession() {
                 <li>• 學生讀的是自己手上的實體書，老師不用貼文本</li>
                 <li>• 學生寫：從書裡抄一段（附頁碼）＋ 一句為什麼選它</li>
                 <li>• 回信的人從三個開頭裡選一個，只需要寫一兩句</li>
-                <li>• 全程匿名（同學之間），環狀配對保證沒有人落單</li>
+                <li>• 收信的人看不到寄信的是誰，環狀配對保證沒有人落單</li>
               </ul>
               <p className="text-blue-600 pt-1">
                 流程需要你按一次按鈕：等大家封瓶後，到儀表板按
@@ -680,9 +680,11 @@ export function CreateSession() {
           <hr className="border-gray-100" />
           <h3 className="text-lg font-medium text-primary">互看時要不要掛名</h3>
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
-            這只影響<span className="font-medium">學生看到的畫面</span>。回答一定掛學號才存得進資料庫，
-            所以<span className="font-medium">老師端一律看得到真名</span>。
-            跟學生說明時請說「同學看不到是誰，老師看得到」，不要說「完全匿名」。
+            這只換掉<span className="font-medium">畫面上顯示的字</span>。互看要即時，
+            學生的瀏覽器會拿到整個任務的資料，姓名其實就在他們手機裡，
+            <span className="font-medium">會看原始碼的孩子對得回去</span>；老師端則一律顯示真名。
+            跟學生說明時請說「畫面上不會出現名字，老師看得到」，
+            不要說「完全匿名」或「沒有人知道是誰」。
           </div>
 
           <AttributionPicker
