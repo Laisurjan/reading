@@ -201,14 +201,19 @@ function seed(activityType: ActivityType, step: Step) {
 
     // 以下把所有會寫 Firestore 的動作換成純記憶體版本
     subscribeToSession: () => () => {},
+    // 這兩支一定要同時更新 students 陣列與 currentStudent。
+    // 正式站寫進 Firestore 後快照會把兩邊一起刷新；這裡只改 currentStudent 的話，
+    // 之後任何「從 students 重新取出自己」的動作（例如投遞）都會把步驟倒回 R。
     updateStudentStep: async (s: Step) => {
       useStore.setState((st) => ({
         currentStudent: st.currentStudent ? { ...st.currentStudent, currentStep: s } : null,
+        students: st.students.map((x) => (x.id === ME ? { ...x, currentStep: s } : x)),
       }))
     },
     updateMyBook: async (book) => {
       useStore.setState((st) => ({
         currentStudent: st.currentStudent ? { ...st.currentStudent, myBook: book } : null,
+        students: st.students.map((x) => (x.id === ME ? { ...x, myBook: book } : x)),
       }))
     },
     submitResponse: async (st, content, extra) => {
@@ -294,10 +299,14 @@ function seed(activityType: ActivityType, step: Step) {
         letters.map((l) => ({ id: l.id, studentId: l.studentId }))
       )
       const byId = new Map(plan.map((p) => [p.studentId, p.responseId]))
+      const nextStudents = s.students.map((st) =>
+        byId.has(st.id) ? { ...st, assignedResponseId: byId.get(st.id) } : st
+      )
       useStore.setState({
-        students: s.students.map((st) =>
-          byId.has(st.id) ? { ...st, assignedResponseId: byId.get(st.id) } : st
-        ),
+        students: nextStudents,
+        // currentStudent 也要一起更新。正式站是 Firestore 快照同時更新這兩個，
+        // 這裡只改 students 的話 getAssignedLetter() 讀不到，學生會卡在等待畫面。
+        currentStudent: nextStudents.find((st) => st.id === ME) ?? s.currentStudent,
       })
       return {
         assigned: plan.length,
@@ -320,11 +329,24 @@ export function DevPreview() {
   const [step, setStep] = useState<Step>('R')
   const [view, setView] = useState<View>('student')
   const [ready, setReady] = useState(false)
+  const [deliverMsg, setDeliverMsg] = useState<string | null>(null)
 
+  // 切換老師端／學生端時「不可以」重新 seed，否則剛剛送出的信與投遞結果會被洗掉，
+  // 跨角色的流程（學生送出 → 老師投遞 → 學生收信）就永遠測不起來。
   useEffect(() => {
     seed(activityType, step)
     setReady(true)
-  }, [activityType, step, view])
+  }, [activityType, step])
+
+  // 在已開著的分頁直接改網址的 ?mode=，也要跟著切換
+  useEffect(() => {
+    const onHashChange = () => {
+      const m = new URLSearchParams(location.hash.split('?')[1] ?? '').get('mode')
+      if (m === 'classic' || m === 'pitch' || m === 'bottle') setActivityType(m)
+    }
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
 
   const current = useStore((s) => s.currentStudent?.currentStep)
 
@@ -388,7 +410,22 @@ export function DevPreview() {
                 {s}
               </button>
             ))}
-            <span className="text-gray-500 ml-auto">目前：{current}</span>
+            {/* 瓶中信要有人按投遞瓶子才會漂過來，放在這裡才不用切到老師端 */}
+            {activityType === 'bottle' && (
+              <button
+                onClick={async () => {
+                  const r = await useStore.getState().deliverLetters(SESSION_ID)
+                  setDeliverMsg(`投遞 ${r.assigned} 封，${r.waiting} 人還沒送出`)
+                  setTimeout(() => setDeliverMsg(null), 4000)
+                }}
+                className="px-2 py-0.5 rounded bg-sky-500 text-white font-medium"
+              >
+                🌊 模擬老師投遞
+              </button>
+            )}
+            <span className="text-gray-500 ml-auto">
+              {deliverMsg ?? `目前：${current}`}
+            </span>
           </>
         )}
       </div>
