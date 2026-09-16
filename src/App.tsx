@@ -10,6 +10,7 @@ import { Home } from './pages/Home'
 import { TeacherHome } from './pages/teacher/TeacherHome'
 import { CreateSession } from './pages/teacher/CreateSession'
 import { Dashboard } from './pages/teacher/Dashboard'
+import { PrintView } from './pages/teacher/PrintView'
 import { Join } from './pages/student/Join'
 import { Session } from './pages/student/Session'
 import { useStore } from './store/useStore'
@@ -73,6 +74,10 @@ function ProtectedRoutes() {
       <Route
         path="/teacher/dashboard/:id"
         element={role === 'teacher' ? <Dashboard /> : <Navigate to="/" replace />}
+      />
+      <Route
+        path="/teacher/print/:id"
+        element={role === 'teacher' ? <PrintView /> : <Navigate to="/" replace />}
       />
 
       {/* 學生端 */}

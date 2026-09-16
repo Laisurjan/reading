@@ -420,6 +420,19 @@ export function Dashboard() {
         )}
       </div>
 
+      {/* 匯出全班成果 */}
+      <div className="mt-8">
+        <button
+          onClick={() => navigate(`/teacher/print/${session.id}`)}
+          className="w-full bg-accent hover:bg-accent/90 text-white rounded-lg py-3 px-6 font-medium transition-colors cursor-pointer"
+        >
+          📄 匯出全班成果（列印 / 存成 PDF）
+        </button>
+        <p className="text-xs text-gray-400 mt-2 text-center">
+          可切換顯示姓名或匿名代號；要投影或張貼時請切成代號
+        </p>
+      </div>
+
       {/* 底部操作 */}
       <div className="mt-8 pt-6 border-t border-gray-200 flex items-center justify-between">
         <button

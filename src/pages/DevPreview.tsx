@@ -17,6 +17,7 @@ import { buildDeliveryPlan } from '../utils/helpers'
 import { SessionPage } from './student/Session'
 import { CreateSession } from './teacher/CreateSession'
 import { Dashboard } from './teacher/Dashboard'
+import { PrintView } from './teacher/PrintView'
 import type { Session, Student, Response, ActivityType, Step, Reply, Reaction } from '../types'
 
 const SESSION_ID = 'dev-session'
@@ -319,7 +320,7 @@ function seed(activityType: ActivityType, step: Step) {
 const STEPS: Step[] = ['R', 'I', 'I-share', 'A2']
 
 /** 要預覽哪一端的畫面 */
-type View = 'student' | 'create' | 'dashboard'
+type View = 'student' | 'create' | 'dashboard' | 'print'
 
 export function DevPreview() {
   // 參數在 hash 裡（#/dev?mode=pitch），不是在 location.search
@@ -358,15 +359,27 @@ export function DevPreview() {
           path: '/teacher/create',
           el: <CreateSession />,
         }
-      : {
-          entry: `/teacher/dashboard/${SESSION_ID}`,
-          path: '/teacher/dashboard/:id',
-          el: <Dashboard />,
-        }
+      : view === 'print'
+        ? {
+            entry: `/teacher/print/${SESSION_ID}`,
+            path: '/teacher/print/:id',
+            el: <PrintView />,
+          }
+        : {
+            entry: `/teacher/dashboard/${SESSION_ID}`,
+            path: '/teacher/dashboard/:id',
+            el: <Dashboard />,
+          }
 
   return (
     <div>
-      <div className="bg-gray-900 text-white px-4 py-2 text-sm flex flex-wrap items-center gap-3 sticky top-0 z-50">
+      {/* 匯出頁自己有一條 sticky 工具列，這裡再 sticky 兩條會疊在一起，
+          所以只有在其他檢視才固定 */}
+      <div
+        className={`bg-gray-900 text-white px-4 py-2 text-sm flex flex-wrap items-center gap-3 z-50 ${
+          view === 'print' ? 'relative' : 'sticky top-0'
+        }`}
+      >
         <span className="font-bold text-amber-400">預覽模式．全部是假資料</span>
         <span className="text-gray-400">|</span>
         {(['classic', 'pitch', 'bottle'] as ActivityType[]).map((m) => (
@@ -385,6 +398,7 @@ export function DevPreview() {
           ['student', '學生端'],
           ['create', '老師：建立'],
           ['dashboard', '老師：儀表板'],
+          ['print', '老師：匯出'],
         ] as [View, string][]).map(([v, label]) => (
           <button
             key={v}

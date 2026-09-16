@@ -53,3 +53,58 @@ input, textarea, select {
 ::selection {
   @apply bg-accent/30;
 }
+
+/* ─────────────────────────────────────────────
+   列印（老師端「匯出全班成果」走的是瀏覽器列印 → 另存 PDF）
+   ───────────────────────────────────────────── */
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+
+  /* 列印時字要小一點，否則一個人就佔掉大半頁 */
+  html {
+    font-size: 12px;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  /* 工具列、按鈕這類螢幕專用的東西不要印出來 */
+  .no-print {
+    display: none !important;
+  }
+
+  /* 外層的灰底與陰影在紙上只會變成髒髒的一片 */
+  .print-root {
+    background: #fff !important;
+    min-height: 0 !important;
+  }
+
+  .print-page {
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
+    box-shadow: none !important;
+  }
+
+  /* 預設瀏覽器會把背景色去掉，這行才留得住底色與色塊 */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* 一個人的成果不要被切成兩頁 */
+  .avoid-break {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* 標題不要落在頁尾孤零零一行 */
+  h1, h2, h3 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+}
