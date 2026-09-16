@@ -2,7 +2,7 @@
  * 深度共讀平台 - 路由設定
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { Login } from './pages/Login'
@@ -82,29 +82,14 @@ function ProtectedRoutes() {
   )
 }
 
-/** 目前網址是不是預覽頁 */
-function useIsDevPreview() {
-  const [isDev, setIsDev] = useState(
-    () => import.meta.env.DEV && window.location.hash.startsWith('#/dev')
-  )
-
-  // 頁面已經載入後才把網址改成 #/dev 時，瀏覽器不會重新載入，
-  // 所以要聽 hashchange，否則會停在原本的畫面（登入頁）不動
-  useEffect(() => {
-    if (!import.meta.env.DEV) return
-    const onHashChange = () => setIsDev(window.location.hash.startsWith('#/dev'))
-    window.addEventListener('hashchange', onHashChange)
-    return () => window.removeEventListener('hashchange', onHashChange)
-  }, [])
-
-  return isDev
-}
-
 export function App() {
   // 開發用預覽：不登入、不連 Firebase，直接看三種玩法的畫面。
-  // 只在 dev 存在，正式站不會有這條路由。
-  const isDevPreview = useIsDevPreview()
-  if (isDevPreview) {
+  //
+  // 這個判斷式必須維持這個「靜態」寫法（import.meta.env.DEV 直接寫在 if 裡），
+  // 正式建置時才會被判定為永遠 false，連同 DevPreview 整包被搖掉。
+  // 改成用 hook／state 包起來 Rollup 就推不出來，預覽頁會被打包進正式站。
+  // 網址在載入後才改成 #/dev 的情況由 main.tsx 的 hashchange 整頁重載處理。
+  if (import.meta.env.DEV && window.location.hash.startsWith('#/dev')) {
     return <DevPreview />
   }
 
