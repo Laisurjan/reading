@@ -13,7 +13,10 @@
 import { useState, useEffect } from 'react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { useStore } from '../store/useStore'
+import { buildDeliveryPlan } from '../utils/helpers'
 import { SessionPage } from './student/Session'
+import { CreateSession } from './teacher/CreateSession'
+import { Dashboard } from './teacher/Dashboard'
 import type { Session, Student, Response, ActivityType, Step, Reply, Reaction } from '../types'
 
 const SESSION_ID = 'dev-session'
@@ -270,10 +273,44 @@ function seed(activityType: ActivityType, step: Step) {
       }))
     },
     clearCurrentStudent: noop as never,
+
+    // 老師端：不要真的寫進 Firestore
+    createSession: async (data) => {
+      const fake = { ...buildSession(data.activityType ?? 'classic'), joinCode: '123456' }
+      useStore.setState({ sessions: [fake] })
+      return fake
+    },
+    deleteSession: noop as never,
+    deliverLetters: async () => {
+      const s = useStore.getState()
+      const letters = s.responses.filter((r) => r.step === 'I')
+      const pendingIds = s.students
+        .filter((st) => letters.some((l) => l.studentId === st.id) && !st.assignedResponseId)
+        .map((st) => st.id)
+        .sort()
+      const plan = buildDeliveryPlan(
+        pendingIds,
+        new Map(letters.map((l) => [l.studentId, l.id])),
+        letters.map((l) => ({ id: l.id, studentId: l.studentId }))
+      )
+      const byId = new Map(plan.map((p) => [p.studentId, p.responseId]))
+      useStore.setState({
+        students: s.students.map((st) =>
+          byId.has(st.id) ? { ...st, assignedResponseId: byId.get(st.id) } : st
+        ),
+      })
+      return {
+        assigned: plan.length,
+        waiting: s.students.filter((st) => !letters.some((l) => l.studentId === st.id)).length,
+      }
+    },
   })
 }
 
 const STEPS: Step[] = ['R', 'I', 'I-share', 'A2']
+
+/** 要預覽哪一端的畫面 */
+type View = 'student' | 'create' | 'dashboard'
 
 export function DevPreview() {
   // 參數在 hash 裡（#/dev?mode=pitch），不是在 location.search
@@ -281,14 +318,29 @@ export function DevPreview() {
     (new URLSearchParams(location.hash.split('?')[1] ?? '').get('mode') as ActivityType) || 'pitch'
   )
   const [step, setStep] = useState<Step>('R')
+  const [view, setView] = useState<View>('student')
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
     seed(activityType, step)
     setReady(true)
-  }, [activityType, step])
+  }, [activityType, step, view])
 
   const current = useStore((s) => s.currentStudent?.currentStep)
+
+  /** 老師端兩頁各自需要的路由參數 */
+  const teacherRoute =
+    view === 'create'
+      ? {
+          entry: '/teacher/create?classId=dev-class',
+          path: '/teacher/create',
+          el: <CreateSession />,
+        }
+      : {
+          entry: `/teacher/dashboard/${SESSION_ID}`,
+          path: '/teacher/dashboard/:id',
+          el: <Dashboard />,
+        }
 
   return (
     <div>
@@ -307,29 +359,59 @@ export function DevPreview() {
           </button>
         ))}
         <span className="text-gray-400">|</span>
-        {STEPS.map((s) => (
+        {([
+          ['student', '學生端'],
+          ['create', '老師：建立'],
+          ['dashboard', '老師：儀表板'],
+        ] as [View, string][]).map(([v, label]) => (
           <button
-            key={s}
-            onClick={() => setStep(s)}
+            key={v}
+            onClick={() => setView(v)}
             className={`px-2 py-0.5 rounded ${
-              current === s ? 'bg-amber-400 text-gray-900 font-medium' : 'bg-gray-700'
+              view === v ? 'bg-emerald-400 text-gray-900 font-medium' : 'bg-gray-700'
             }`}
           >
-            {s}
+            {label}
           </button>
         ))}
-        <span className="text-gray-500 ml-auto">目前：{current}</span>
+        {view === 'student' && (
+          <>
+            <span className="text-gray-400">|</span>
+            {STEPS.map((s) => (
+              <button
+                key={s}
+                onClick={() => setStep(s)}
+                className={`px-2 py-0.5 rounded ${
+                  current === s ? 'bg-amber-400 text-gray-900 font-medium' : 'bg-gray-700'
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+            <span className="text-gray-500 ml-auto">目前：{current}</span>
+          </>
+        )}
       </div>
-      {/* SessionPage 會用 useParams／useNavigate，所以要有 Router 包著。
+      {/* 這些頁面都會用 useParams／useNavigate，所以要有 Router 包著。
           用 MemoryRouter 才不會去動真正的網址列 */}
-      {ready && (
-        <MemoryRouter initialEntries={[`/session/${SESSION_ID}`]}>
-          <Routes>
-            <Route path="/session/:id" element={<SessionPage />} />
-            <Route path="*" element={<div className="p-8 text-center text-gray-500">已離開任務</div>} />
-          </Routes>
-        </MemoryRouter>
-      )}
+      {ready &&
+        (view === 'student' ? (
+          <MemoryRouter initialEntries={[`/session/${SESSION_ID}`]}>
+            <Routes>
+              <Route path="/session/:id" element={<SessionPage />} />
+              <Route path="*" element={<div className="p-8 text-center text-gray-500">已離開任務</div>} />
+            </Routes>
+          </MemoryRouter>
+        ) : (
+          // key 是必要的：MemoryRouter 只在掛載時讀 initialEntries，
+          // 不換 key 的話切換老師端兩頁時會沿用前一頁的網址而對不到路由
+          <MemoryRouter key={view} initialEntries={[teacherRoute.entry]}>
+            <Routes>
+              <Route path={teacherRoute.path} element={teacherRoute.el} />
+              <Route path="*" element={<div className="p-8 text-center text-gray-500">已離開</div>} />
+            </Routes>
+          </MemoryRouter>
+        ))}
     </div>
   )
 }
